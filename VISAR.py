@@ -1,27 +1,3 @@
-"""
-Script for reading in, manipulating and analyzing VISAR data
-
-7/8/2025
-"""
-
-"""
-JLF
-"""
-
-#Background setup that needs to exist
-# - File containing all relevant params for each shot which can be referenced
-# - Organized data folder w/ all interesting shots
-
-#Inputs before any procedure begins:
-# - Shot no.
-
-#Step 1 - Read & plot in TIF File
-    #Graph should have sliders or entry windows with variable values
-#Step 2 - Perform correction to V1 for laser calibration
-#Step 3 - Perform shear on each VISAR
-#Step 4 - 
-#Step 5 - 
-
 import numpy as np
 from PIL import Image
 import os
