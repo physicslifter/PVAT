@@ -16,7 +16,7 @@ from VISAR import RefImage
 from InteractivePlots import BeamAligner
 
 ref_file = "SyntheticData/20nsBeamReference.tif"
-ref = RefImage(fname = fname, sweep_speed = 20, slit_size = 500)
+ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
 aligner = BeamAligner(ref)
 aligner.initialize_plot()
 aligner.show_plot()
