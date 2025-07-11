@@ -5,7 +5,32 @@ from VISAR import *
 from InteractivePlots import *
 from SyntheticData import *
 from matplotlib import pyplot as plt
+import pandas as pd
+import os
 
+#Parameters and saving data
+ref_file = "data/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
+shot_name = "0409_1635_20ns_1ns_westbeam_Visar1"
+ref_name = "0409_1635_20ns_1ns_westbeam_Visar1"
+sweep_speed = 20
+slit_size = 500
+info_csv_path = "./python_analysis/info.csv"
+
+def create_info_csv(shot_name, ref_name, sweep_speed, slit_size, info_csv_path=info_csv_path):
+    new_rows = [
+        {"shot": shot_name, "sweep_time": sweep_speed, "slit_size": slit_size},
+        {"shot": ref_name, "sweep_time": sweep_speed, "slit_size": slit_size}
+    ]
+    os.makedirs(os.path.dirname(info_csv_path), exist_ok=True)
+    if os.path.exists(info_csv_path):
+        df = pd.read_csv(info_csv_path)
+        df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+    else:
+        df = pd.DataFrame(new_rows)
+    df.to_csv(info_csv_path, index=False)
+    print(f"Saved shot/ref info to {info_csv_path}")
+
+#Testing...
 get_data = 0
 show_base_tif = 0
 test_lineout = 0
@@ -17,10 +42,12 @@ test_interactive_ref_plot = 1 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
 test_synthetic_beam_lineout = 0
 
+#Tests
+if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
+    ref = RefImage(ref_file, sweep_speed, slit_size)
+    create_info_csv(shot_name, ref_name, sweep_speed, slit_size)
+
 if test_ref == True:
-    # 20 ns ref file
-    ref_file = "../../VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
-    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     fig = plt.figure()
     ax1 = fig.add_subplot(1,1,1)
     ax1.set_title(ref_file)
@@ -28,8 +55,6 @@ if test_ref == True:
     plt.show()
 
 if test_ref_split == True:
-    ref_file = "../../VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
-    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     ref.chop_beam(ybounds = (0, 450), num_slices = 20)
     ref.plot_chop(minmax = (100, 2000))
 
@@ -38,8 +63,6 @@ if test_image_correction == True:
     Pass a correction to an image to demonstrate it works
     """
     #read in a ref file and chop beam to get the correction
-    ref_file = "../../VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
-    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     ref.chop_beam(ybounds = (0, 450), num_slices = 50)
     ref.save_chop_as_correction() #get the correction but don't save it to a file
     
@@ -61,8 +84,6 @@ if test_image_correction == True:
 
 if demo_img_correction == True:
     #read in a ref file and chop beam to get the correction
-    ref_file = "../../VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
-    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     ref.chop_beam(ybounds = (0, 450), num_slices = 50)
     ref.save_chop_as_correction() #get the correction but don't save it to a file
     ref.plot_chop(minmax = (100, 2000)) #chop w/out correction
@@ -75,15 +96,13 @@ if demo_img_correction == True:
     ref.plot_chop(minmax = (100, 2000))
 
 if test_interactive_ref_plot == True:
-    ref_file = "../JLF_2025/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
-    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     aligner = BeamAligner(ref)
     aligner.initialize_plot()
+    aligner.set_lineout_save_name("ref_lineout.csv")
+    aligner.set_correction_save_name("ref_correction.csv")
     aligner.show_plot()
 
 if test_initialize_image_w_data == True:
-    ref_file = "../JLF_2025/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
-    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     data = ref.img.data
     #initialize a new file with the reference data
     new_img = VISARImage(fname = None, data = data, sweep_speed = 20, slit_size = 500)
