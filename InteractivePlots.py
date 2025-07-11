@@ -5,6 +5,8 @@ from VISAR import *
 from matplotlib import pyplot as plt
 from matplotlib.widgets import RangeSlider, Slider, Button
 from matplotlib.gridspec import GridSpec
+import pandas as pd
+import numpy as np
 
 class BeamAligner:
     """
@@ -166,7 +168,7 @@ class BeamAligner:
         self.correction_save_name = fname
 
     def set_lineout_save_name(self, fname):
-        self.set_lineout_save_name(fname)
+        self.timing_save_name = fname
 
     def click_apply_correction(self, val):
         #Save the correction
@@ -195,6 +197,10 @@ class BeamAligner:
             time = self.fiducial_lineout.get_xdata()
             df = pd.DataFrame({"time": time, "beam": beam_lineout, "fiducial": fiducial_lineout})
             df.to_csv(self.timing_save_name)
+
+            #updates saved CSV, PNG
+            plot_filename = self.timing_save_name.replace('.csv', '.png')
+            self.fig.savefig(plot_filename) #new
         else:
             pass
 
@@ -212,6 +218,7 @@ class BeamAligner:
         self.get_chop_button.on_clicked(self.click_get_chop)
         self.apply_correction_button.on_clicked(self.click_apply_correction)
         self.center_time_button.on_clicked(self.click_zero_time)
+        self.save_time_calibration_button.on_clicked(self.click_save_time_cal)
 
     def show_plot(self):
         if self.showing_visar == False:
