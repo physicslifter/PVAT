@@ -3,6 +3,7 @@ Testing VISAR.py
 """
 from VISAR import *
 from InteractivePlots import*
+from SyntheticData import *
 from matplotlib import pyplot as plt
 
 get_data = 0
@@ -13,7 +14,8 @@ test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
 demo_img_correction = 0 #demonstrates improvement from the correction
 test_interactive_ref_plot = 0 #tests the interactive reference timing plot
-test_initialize_image_w_data = 1 #tests image initialization with data
+test_initialize_image_w_data = 0 #tests image initialization with data
+test_synthetic_beam_lineout = 1
 
 if test_ref == True:
     # 20 ns ref file
@@ -89,4 +91,14 @@ if test_initialize_image_w_data == True:
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
     new_img.show_data(ax)
+    plt.show()
+
+if test_synthetic_beam_lineout == True:
+    simulated = SyntheticBeamCalibration(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
+    simulated.generate_background(500)
+    synthetic_img = VISARImage(fname = None, data = simulated.data, sweep_speed = simulated.sweep_speed, slit_size = simulated.sweep_speed)
+    fig = plt.subplots()
+    ax = plt.subplot(1, 1, 1)
+    ax.set_title("Simulated Image")
+    synthetic_img.show_data(ax, minmax = (simulated.data.min(), simulated.data.max()))
     plt.show()
