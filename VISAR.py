@@ -328,8 +328,9 @@ class RefImage:
             ax1.axhline(loc)
 
         #put lineouts on the graph
-        for loc, slice in zip(self.locs, self.slices):
+        for loc, slice, center in zip(self.locs, self.slices, self.fit_centers):
             ax2.plot(self.img.time, slice, label = loc)
+            ax2.vlines(center, slice.min(), slice.max())
 
         #put the changing location on the plot
         if self.has_correction == False:

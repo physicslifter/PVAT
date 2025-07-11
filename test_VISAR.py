@@ -13,9 +13,9 @@ test_ref = 0
 test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
 demo_img_correction = 0 #demonstrates improvement from the correction
-test_interactive_ref_plot = 0 #tests the interactive reference timing plot
+test_interactive_ref_plot = 1 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
-test_synthetic_beam_lineout = 1
+test_synthetic_beam_lineout = 0
 
 if test_ref == True:
     # 20 ns ref file
@@ -75,7 +75,7 @@ if demo_img_correction == True:
     ref.plot_chop(minmax = (100, 2000))
 
 if test_interactive_ref_plot == True:
-    ref_file = "../../VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
+    ref_file = "../JLF_2025/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
     ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
     aligner = BeamAligner(ref)
     aligner.initialize_plot()
@@ -96,8 +96,8 @@ if test_initialize_image_w_data == True:
 if test_synthetic_beam_lineout == True:
     simulated = SyntheticBeamCalibration(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
     simulated.generate_background(500)
-    simulated.generate_beam(3.5, 1, 500, max_loc = 430, shift = 2/500)
-    simulated.generate_fiducial(timing_offset = 3.2, space_loc = 465, amp = 500, width = 4, height = 10)
+    simulated.generate_beam(3.5, 1, 2500, max_loc = 430, shift = 2/500)
+    simulated.generate_fiducial(timing_offset = 3.2, space_loc = 465, amp = 2000, width = 4, height = 10)
     synthetic_img = VISARImage(fname = None, data = simulated.data, sweep_speed = simulated.sweep_speed, slit_size = simulated.slit_size)
     fig = plt.subplots()
     ax = plt.subplot(1, 1, 1)
