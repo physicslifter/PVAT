@@ -6,7 +6,7 @@ Python VISAR Analysis Tool
 - pandas
 - numpy
 - PIL
-- scipy
+- scipy!
   
 # Tutorials  
 ## Align a Beam reference  
