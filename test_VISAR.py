@@ -13,9 +13,9 @@ test_ref = 0
 test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
 demo_img_correction = 0 #demonstrates improvement from the correction
-test_interactive_ref_plot = 0 #tests the interactive reference timing plot
+test_interactive_ref_plot = 1 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
-test_synthetic_beam_lineout = 1
+test_synthetic_beam_lineout = 0
 
 if test_ref == True:
     # 20 ns ref file

@@ -2,8 +2,9 @@
 Tests for AnalysisManager
 """
 from AnalysisManager import AnalysisManager
+from pdb import set_trace as st
 
-analysis_directory = "../python_analysis"
+analysis_directory = "../"
 
 test_folder_setup = True
 
@@ -16,3 +17,4 @@ if test_folder_setup == True:
         sweep_speed = 20,
         slit_size = 500
         )
+    
