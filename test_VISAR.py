@@ -96,7 +96,8 @@ if test_initialize_image_w_data == True:
 if test_synthetic_beam_lineout == True:
     simulated = SyntheticBeamCalibration(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
     simulated.generate_background(500)
-    synthetic_img = VISARImage(fname = None, data = simulated.data, sweep_speed = simulated.sweep_speed, slit_size = simulated.sweep_speed)
+    simulated.generate_beam(3.5, 1, 200, max_loc = 450)
+    synthetic_img = VISARImage(fname = None, data = simulated.data, sweep_speed = simulated.sweep_speed, slit_size = simulated.slit_size)
     fig = plt.subplots()
     ax = plt.subplot(1, 1, 1)
     ax.set_title("Simulated Image")
