@@ -83,8 +83,9 @@ class VISARImage:
     """
     A simpler & more general class for the VISAR Image
     """
-    def __init__(self, fname, sweep_speed, slit_size):
+    def __init__(self, fname:str=None, data:np.array=None, sweep_speed:int=20, slit_size:int=500):
         self.fname = fname
+        self.data = data
         self.sweep_speed = sweep_speed
         self.slit_size = slit_size
         self.get_data()
@@ -94,9 +95,17 @@ class VISARImage:
         self.has_data = False
 
     def get_data(self):
-        tif = Image.open(self.fname)
-        self.data = np.array(tif).T
-        self.has_data = True
+        if self.fname == None and type(self.data) == type(None): #if neither file nor data has been passed in
+            raise Exception("VISARImage requires either a filename or data")
+        elif self.fname != None and type(self.data) != type(None): #if both a filename and data are passed in
+            if self.has_data == False:
+                raise Exception("Cannot pass in both data and a tif file. Specify one.")
+        elif self.fname != None and type(self.data) == type(None): #If we have a file for the data
+            tif = Image.open(self.fname)
+            self.data = np.array(tif).T
+            self.has_data = True
+        elif self.fname == None and type(self.data) != type(None): #if we have data for the shot
+            self.data = self.data
 
     def align_time(self, time=None):
         if time != None:

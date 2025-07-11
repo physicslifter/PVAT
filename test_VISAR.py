@@ -12,7 +12,8 @@ test_ref = 0
 test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
 demo_img_correction = 0 #demonstrates improvement from the correction
-test_interactive_ref_plot = 1 #tests the interactive reference timing plot
+test_interactive_ref_plot = 0 #tests the interactive reference timing plot
+test_initialize_image_w_data = 1 #tests image initialization with data
 
 if test_ref == True:
     # 20 ns ref file
@@ -77,3 +78,15 @@ if test_interactive_ref_plot == True:
     aligner = BeamAligner(ref)
     aligner.initialize_plot()
     aligner.show_plot()
+
+if test_initialize_image_w_data == True:
+    ref_file = "../JLF_2025/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
+    ref = RefImage(fname = ref_file, sweep_speed = 20, slit_size = 500)
+    data = ref.img.data
+    #initialize a new file with the reference data
+    new_img = VISARImage(fname = None, data = data, sweep_speed = 20, slit_size = 500)
+    #show the new image
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+    new_img.show_data(ax)
+    plt.show()
