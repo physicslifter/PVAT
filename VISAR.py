@@ -89,11 +89,11 @@ class VISARImage:
         self.data = data
         self.sweep_speed = sweep_speed
         self.slit_size = slit_size
+        self.time_aligned = False
+        self.has_data = False
         self.get_data()
         self.align_space()
         self.align_time() #Default time. You can pass in a new time calibration later
-        self.time_aligned = False
-        self.has_data = False
 
     def get_data(self):
         if self.fname == None and type(self.data) == type(None): #if neither file nor data has been passed in
@@ -180,7 +180,8 @@ class VISARImage:
         #saves the current image as a tif file
         if save_name.split(".")[-1] != "tif":
             raise Exception("Must save as a .tif file")
-        imsave(save_name, self.data)
+        print(type(self.data))
+        imsave(save_name, self.data.astype(np.float32).T)
 
     def set_time_to_zero(self, time):
         """
