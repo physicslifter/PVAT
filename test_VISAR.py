@@ -2,7 +2,7 @@
 Testing VISAR.py
 """
 from VISAR import *
-from InteractivePlots import*
+from InteractivePlots import *
 from SyntheticData import *
 from matplotlib import pyplot as plt
 
@@ -13,9 +13,9 @@ test_ref = 0
 test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
 demo_img_correction = 0 #demonstrates improvement from the correction
-test_interactive_ref_plot = 1 #tests the interactive reference timing plot
+test_interactive_ref_plot = 0 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
-test_synthetic_beam_lineout = 0
+test_synthetic_beam_lineout = 1
 
 if test_ref == True:
     # 20 ns ref file
@@ -96,10 +96,14 @@ if test_initialize_image_w_data == True:
 if test_synthetic_beam_lineout == True:
     simulated = SyntheticBeamCalibration(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
     simulated.generate_background(500)
-    simulated.generate_beam(3.5, 1, 200, max_loc = 450)
+    simulated.generate_beam(3.5, 1, 500, max_loc = 430, shift = 2/500)
+    simulated.generate_fiducial(timing_offset = 3.2, space_loc = 465, amp = 500, width = 4, height = 10)
     synthetic_img = VISARImage(fname = None, data = simulated.data, sweep_speed = simulated.sweep_speed, slit_size = simulated.slit_size)
     fig = plt.subplots()
     ax = plt.subplot(1, 1, 1)
-    ax.set_title("Simulated Image")
+    ax.set_title("Simulated Beam Reference")
     synthetic_img.show_data(ax, minmax = (simulated.data.min(), simulated.data.max()))
+    #If the tif doesn't currently exist, save it
+    if os.path.exists("SyntheticData/20nsBeamReference.tif") == False:
+        synthetic_img.save_tif("SyntheticData/20nsBeamReference.tif")
     plt.show()

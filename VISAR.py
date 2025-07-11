@@ -6,6 +6,7 @@ from matplotlib import colors
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.ndimage import shift
+from tifffile import imsave
 
 def gaussian(x, a, b, c, background):
   return a * np.exp(-(x - b)**2 / (2 * c**2)) + background
@@ -174,6 +175,12 @@ class VISARImage:
         ax.set_xlabel("Time (ns)")
         ax.set_ylabel("Dist from slit bottom (um)")
         self.plotted = True
+
+    def save_tif(self, save_name):
+        #saves the current image as a tif file
+        if save_name.split(".")[-1] != "tif":
+            raise Exception("Must save as a .tif file")
+        imsave(save_name, self.data)
 
     def set_time_to_zero(self, time):
         """
