@@ -60,7 +60,7 @@ class ImageCorrection:
                 fname = self.fname
         if fname.split(".")[-1].lower() != "csv":
             raise Exception("Must save as a csv file")
-        data = pd.DataFrame({"space": self.space, "time_shift":self.time})
+        data = pd.DataFrame({"space": self.space, "time_shift":self.time_shift})
         data.to_csv(fname)
 
     def plot(self, ax=None, flip:bool = False):
