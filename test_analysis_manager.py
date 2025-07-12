@@ -2,19 +2,24 @@
 Tests for AnalysisManager
 """
 from AnalysisManager import AnalysisManager
-from pdb import set_trace as st
+import datetime
 
-analysis_directory = "../"
+parent_directory = "./python_analysis"
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-test_folder_setup = True
+manager = AnalysisManager(parent_directory)
+manager.create_new_analysis(timestamp)  # creates ./python_analysis/{timestamp}
+manager.name = timestamp
 
-if test_folder_setup == True:
-    manager = AnalysisManager(analysis_directory)
-    manager.create_new_analysis("20250709")
-    manager.add_shot_to_analysis(
-        shot_file = "../../VISAR1/0409_1753_Shot65_Visar1.tif",
-        ref_file = "../../VISAR1/0409_1746_Shot65_Visar1_ref.tif",
-        sweep_speed = 20,
-        slit_size = 500
-        )
-    
+shot_file = "../VISAR1/0409_1753_Shot65_Visar1.tif"
+ref_file = "../VISAR1/0409_1746_Shot65_Visar1_ref.tif"
+shot_label = shot_file.split('/')[-1].lower().replace('.tif', '')
+ref_label = ref_file.split('/')[-1].lower().replace('.tif', '')
+
+manager.add_shot_to_analysis(
+    shot_file = shot_file,
+    ref_file = ref_file,
+    sweep_speed = 20,
+    slit_size = 500
+)
+manager.organize_analysis_files(shot_label, ref_label)
