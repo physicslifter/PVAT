@@ -240,6 +240,7 @@ class ShotAligner:
         self.img = img
         self.name = f"{img.fname.split('/')[-1].lower().replace('.tif', '')}"
         self.showing_visar = False
+        self.showing_lineout = False
         self.beam_ref = ""
 
     def initialize_plot(self):
@@ -285,10 +286,10 @@ class ShotAligner:
         #bottom sliders
         self.colormap_slider_ax = self.fig.add_axes([0.15, 0.1, 0.45, 0.03])
         self.time_shift_slider_ax = self.fig.add_axes([0.15, 0.06, 0.45, 0.03])
-        self.breakout_time_slider_ax = self.fig.add_axes([0.15, 0.02, 0.45, 0.03])
+        self.fiducial_slider_ax = self.fig.add_axes([0.15, 0.02, 0.45, 0.03])
         self.colormap_slider = RangeSlider(self.colormap_slider_ax, "Heatmap\nThreshold", self.img.data.min(), self.img.data.max())
         self.time_shift_slider = Slider(self.time_shift_slider_ax, "Start Time", -5, 5, valinit = 0)
-        self.breakout_time_slider = Slider(self.breakout_time_slider_ax, "Breakout Time", valmin = self.img.time.min(), valmax = self.img.time.max(), valinit = 0)
+        self.fiducial_slider = RangeSlider(self.fiducial_slider_ax, "Fiducial Bounds", valmin = self.img.space.min(), valmax = self.img.space.max())
 
         #timing buttons
         self.save_time_calibration_ax = self.fig.add_axes([0.72, 0.05, 0.14 ,0.07])
@@ -301,6 +302,24 @@ class ShotAligner:
         self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.72, 0.73, 0.14, 0.07])
         self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
         self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+
+    def plot_initial_lineouts(self):
+        """
+        Plots lineouts and fiducial bounds
+        """
+        self.fiducial_lower = self.img_ax.axhline([self.fiducial_slider.val[0]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime", label = "Fiducial Bounds")
+        self.fiducial_upper = self.img_ax.axhline([self.fiducial_slider.val[1]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime")
+        fiducial_lineout = self.img.take_lineout(min = self.fiducial_slider.val[0], max = self.fiducial_slider.val[1])
+        self.fiducial_lineout = self.lineout_ax.plot(self.img.time, fiducial_lineout)[0]
+        self.showing_lineout = True
+
+    def update_fiducial_bounds(self, val):
+        vmin, vmax = val
+        self.fiducial_lower.set_ydata([vmin, vmin])
+        self.fiducial_upper.set_ydata([vmax, vmax])
+        fiducial_lineout = self.img.take_lineout(vmin, vmax)
+        self.fiducial_lineout.set_ydata(fiducial_lineout)
+        self.lineout_ax.set_ylim(fiducial_lineout.min(), fiducial_lineout.max())
 
     def set_ref_folder(self, folder):
         self.beam_ref = folder
@@ -315,6 +334,7 @@ class ShotAligner:
 
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
+        self.fiducial_slider.on_changed(self.update_fiducial_bounds)
 
     def set_buttons(self):
         pass
@@ -322,6 +342,8 @@ class ShotAligner:
     def show_plot(self):
         if self.showing_visar == False:
             self.plot_visar()
+        if self.showing_lineout == False:
+            self.plot_initial_lineouts()
         self.set_sliders()
         self.set_buttons()
         plt.show()
