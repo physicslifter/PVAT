@@ -139,4 +139,4 @@ if test_shot_aligner_plot == True:
     img = VISARImage(shot_file)
     aligner = ShotAligner(img)
     aligner.initialize_plot()
-    plt.show()
+    aligner.show_plot()

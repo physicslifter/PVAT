@@ -3,7 +3,7 @@ Interactive plots for performing analyses
 """
 from VISAR import *
 from matplotlib import pyplot as plt
-from matplotlib.widgets import RangeSlider, Slider, Button
+from matplotlib.widgets import RangeSlider, Slider, Button, TextBox
 from matplotlib.gridspec import GridSpec
 import pandas as pd
 import numpy as np
@@ -239,6 +239,8 @@ class ShotAligner:
     def __init__(self, img:VISARImage):
         self.img = img
         self.name = f"{img.fname.split('/')[-1].lower().replace('.tif', '')}"
+        self.showing_visar = False
+        self.beam_ref = ""
 
     def initialize_plot(self):
         self.fig = plt.figure(figsize = (10, 8))
@@ -250,17 +252,26 @@ class ShotAligner:
         self.lineout_ax = self.fig.add_subplot(gs[2,0])
         plt.setp(self.img_ax.get_xticklabels(), visible=False)
 
-        #Label timing and shearing sections
-        self.fig.text(0.75, 0.7, "Shearing", size = "large", weight = "bold")
-        self.fig.text(0.75, 0.3, "Timing", size = "large", weight = "bold")
+        #Label timing sections
+        self.fig.text(0.75, 0.59, "Shearing", size = "large", weight = "bold")
+        self.fig.text(0.75, 0.25, "Timing", size = "large", weight = "bold")
+        self.fig.text(0.75, 0.87, "Beam\nReference", size = "large", weight = "bold")
 
         #create room for buttons
         self.fig.subplots_adjust(right = 0.7, bottom = 0.2)
 
+        #Beam reference text entry
+        self.ref_file_ax = self.fig.add_axes([0.72, 0.81, 0.15, 0.04])
+        self.ref_file_entry = TextBox(self.ref_file_ax, "Ref\nFolder", initial = self.beam_ref)
+        label = self.ref_file_entry.ax.get_children()[0]
+        label.set_position([1.2, 0.9])
+        label.set_verticalalignment('top')
+        label.set_horizontalalignment('center')
+
         #create shearing button axes
-        self.add_shear_button_ax = self.fig.add_axes([0.72, 0.6, 0.14, 0.07])
-        self.shear_button_ax = self.fig.add_axes([0.72, 0.5, 0.14, 0.07])
-        self.save_shear_button_ax = self.fig.add_axes([0.72, 0.4, 0.14, 0.07])
+        self.add_shear_button_ax = self.fig.add_axes([0.72, 0.5, 0.14, 0.07])
+        self.shear_button_ax = self.fig.add_axes([0.72, 0.4, 0.14, 0.07])
+        self.save_shear_button_ax = self.fig.add_axes([0.72, 0.3, 0.14, 0.07])
 
         #create shearing buttons
         self.add_shear_button = Button(self.add_shear_button_ax, label = "Add Shear")
@@ -268,7 +279,7 @@ class ShotAligner:
         self.save_shear_button = Button(self.save_shear_button_ax, label = "Save Shear")
 
         #create shear slider
-        self.shear_slider_ax = self.fig.add_axes([0.9, 0.4, 0.03, 0.25])
+        self.shear_slider_ax = self.fig.add_axes([0.9, 0.3, 0.03, 0.25])
         self.shear_slider = Slider(ax = self.shear_slider_ax, label = "Shear\nAngle", valmin = -3, valmax = 3, valinit = 0, orientation = "vertical")
 
         #bottom sliders
@@ -280,11 +291,37 @@ class ShotAligner:
         self.breakout_time_slider = Slider(self.breakout_time_slider_ax, "Breakout Time", valmin = self.img.time.min(), valmax = self.img.time.max(), valinit = 0)
 
         #timing buttons
-        self.save_time_calibration_ax = self.fig.add_axes([0.72, 0.1, 0.14 ,0.07])
-        self.center_time_ax = self.fig.add_axes([0.72, 0.2, 0.14,0.07])
+        self.save_time_calibration_ax = self.fig.add_axes([0.72, 0.05, 0.14 ,0.07])
+        self.center_time_ax = self.fig.add_axes([0.72, 0.15, 0.14,0.07])
         self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
         self.center_time_button = Button(self.center_time_ax, "Center Time")
 
-        #Beam Calibration Button
-        self.beam_calibration_ax = self.fig.add_axes([0.72, 0.8, 0.14, 0.07])
-        self.beam_calibration_button = Button(self.beam_calibration_ax, "Apply Beam\nCalibration")
+        #Beam Calibration Buttons
+        self.beam_calibration_button_ax = self.fig.add_axes([0.72, 0.64, 0.14, 0.07])
+        self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.72, 0.73, 0.14, 0.07])
+        self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
+        self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+
+    def set_ref_folder(self, folder):
+        self.beam_ref = folder
+
+    def plot_visar(self):
+        self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.showing_visar = True
+
+    def update_colormap_slider(self, val):
+        self.img.update_heatmap_threshold(vmin = val[0], vmax = val[1])
+        self.fig.canvas.draw_idle()
+
+    def set_sliders(self):
+        self.colormap_slider.on_changed(self.update_colormap_slider)
+
+    def set_buttons(self):
+        pass
+
+    def show_plot(self):
+        if self.showing_visar == False:
+            self.plot_visar()
+        self.set_sliders()
+        self.set_buttons()
+        plt.show()
