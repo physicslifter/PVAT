@@ -39,7 +39,7 @@ def gaussian_2d(x, y, amplitude, xo, yo, sigma_x, sigma_y):
     exponent = -(((x - xo)**2) / (2 * sigma_x**2) + ((y - yo)**2) / (2 * sigma_y**2))
     return amplitude * np.exp(exponent)
 
-class SyntheticBeamCalibration:
+class SyntheticData:
     def __init__(self, 
                  sweep_speed, 
                  slit_size, 
@@ -67,11 +67,20 @@ class SyntheticBeamCalibration:
     def generate_space(self):
         self.space = np.linspace(0, self.slit_size, self.space_points)
 
+class SyntheticBeamCalibration(SyntheticData):
+    def __init__(self, 
+                 sweep_speed, 
+                 slit_size, 
+                 time_points, 
+                 space_points
+                 ):
+       super().__init__(sweep_speed, slit_size, time_points, space_points)
+
     def generate_background(self, amp):
         """
         Generates a background with some noise for the shot
         """
-        self.background = np.random.random([self.space_points, self.time_points])
+        self.background = amp*(np.random.random([self.space_points, self.time_points])+0.5)
         self.data += self.background
 
     def generate_beam(self, center_time, pulse_width, amplitude, max_loc, shift=0):
@@ -128,6 +137,12 @@ class SyntheticBeamCalibration:
         #Add the fiducial to the data
         fiducial = np.vstack(fiducial_lines)
         self.data += fiducial
+
+class SyntheticShot:
+    """
+    synthetic shot data from JLF
+    """
+    
 
     def generate_data(self):
         """

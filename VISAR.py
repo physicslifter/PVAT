@@ -275,6 +275,9 @@ class RefImage:
         2. if overwrite == True, treat the data folder as if it's empty
         """
         self.img = VISARImage(fname = self.fname, sweep_speed = self.sweep_speed, slit_size = self.slit_size)
+        print(os.path.exists(self.folder))
+        if not os.path.exists(f"{self.folder}"):
+            os.mkdir(self.folder)
 
     def show_raw_visar(self, minmax = None):
         fig = plt.subplots()

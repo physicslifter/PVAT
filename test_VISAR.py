@@ -42,7 +42,8 @@ test_interactive_ref_plot = 0 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
 test_synthetic_beam_lineout = 0
 test_shot_aligner_plot = 0 #tests the interactive plot for shot alignment
-test_ref_save = 1 #test to see if the files save appropriately
+test_ref_save = 0 #test to see if the files save appropriately
+test_synthetic_beam_interactive_plot = 1
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -139,6 +140,15 @@ if test_synthetic_beam_lineout == True:
         synthetic_img.save_tif("SyntheticData/20nsBeamReference.tif")
     plt.show()
 
+if test_synthetic_beam_interactive_plot == True:
+    ref_folder = "../RefFolder"
+    ref = RefImage(fname = "SyntheticData/20nsBeamReference.tif",
+                   folder = ref_folder,
+                   sweep_speed = 20,
+                   slit_size = 500)
+    aligner = BeamAligner(ref)
+    aligner.initialize_plot()
+    aligner.show_plot()
 
 if test_shot_aligner_plot == True:
     shot_file = "../JLF_2025/VISAR1/0408_1452_Shot54_Visar1_ref.tif"
@@ -171,6 +181,6 @@ if test_ref_save == True:
     ax1.legend()
     ax2.legend()
     plt.show()
-
+    #while showing the plot, you can go look for the saved folder
     ref.delete_folder()
 
