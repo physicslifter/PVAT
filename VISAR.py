@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.ndimage import shift
 from tifffile import imsave
+import shutil
 
 def gaussian(x, a, b, c, background):
   return a * np.exp(-(x - b)**2 / (2 * c**2)) + background
@@ -251,13 +252,29 @@ class VISARImage:
         new_max = max(self.time) + max_pos_shift*self.time_resolution
         self.time = np.linspace(new_min, new_max, self.data.shape[1])
 
-
 class RefImage:
-    def __init__(self, fname, sweep_speed, slit_size):
+    def __init__(self, fname:str=None, folder:str=None, sweep_speed:int = 20, slit_size:int = 500):
         self.fname = fname
-        self.img = VISARImage(fname = fname, sweep_speed = sweep_speed, slit_size = slit_size)
+        self.folder = folder
+        self.sweep_speed = sweep_speed
+        self.slit_size = slit_size
+        self.get_data()
         self.beam_chopped = False
         self.has_correction = False
+
+    def get_saved_data(self):
+        """
+        function for getting data from a saved RefImage
+        """
+        pass
+
+    def get_data(self):
+        """
+        folder and data are both always specified
+        1. check folder to see if data exists
+        2. if overwrite == True, treat the data folder as if it's empty
+        """
+        self.img = VISARImage(fname = self.fname, sweep_speed = self.sweep_speed, slit_size = self.slit_size)
 
     def show_raw_visar(self, minmax = None):
         fig = plt.subplots()
@@ -303,12 +320,13 @@ class RefImage:
         if self.beam_chopped == False:
             raise Exception("No chopping has been performed")
 
-    def save_chop_as_correction(self, fname=None):
-        self.check_beam_chop()
+    def save_chop_as_correction(self):
         self.correction = ImageCorrection()
-        self.correction.create(space = self.locs, time_shift = -np.array(self.time_shifts))
-        if fname != None:
-            self.correction.save(fname = fname)
+        if self.beam_chopped == False: #if beam hasn't been chopped, save a zero time shift correction
+            self.correction.create(space = self.img.space, time_shift = np.zeros(self.img.space))
+        else: #if beam has been chopped, save the most recent correction
+            self.correction.create(space = self.locs, time_shift = -np.array(self.time_shifts))
+        self.correction.save(fname = f"{self.folder}/correction.csv")
         self.has_correction = True
 
     def plot_chop(self, minmax, savename:str=None, show:bool=True):
@@ -347,7 +365,31 @@ class RefImage:
         if show == True:
             plt.show()
 
+    def take_lineouts(self, fiducial_min, fiducial_max, beam_min, beam_max):
+        """
+        Given bounds for the beam and fiducial lineouts, this function
+        saves the data to the proper folder
+        """
+        self.fiducial_lineout = self.img.take_lineout(fiducial_min, fiducial_max)
+        self.beam_lineout = self.img.take_lineout(beam_min, beam_max)
+        
+    def save_lineouts(self):
+        df = pd.DataFrame({"time":self.img.time, "fiducial":self.fiducial_lineout, "beam":self.beam_lineout})
+        df.to_csv(f"{self.folder}/lineouts.csv")
+        print("Saved")
 
+    def delete_folder(self):
+        """
+        Delete the folder for the reference
+        """
+        shutil.rmtree(self.folder)
+        
+
+def get_ref(folder):
+    """
+    Given a reference folder, this function returns the saved lineouts and correction from the function
+    """
+    pass
 
 class TimingRef:
     """

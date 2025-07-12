@@ -7,14 +7,17 @@ from SyntheticData import *
 from matplotlib import pyplot as plt
 import pandas as pd
 import os
+from pdb import set_trace as st
 
 #Parameters and saving data
-ref_file = "data/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
+ref_file = "../JLF_2025/VISAR1/0409_1635_20ns_1ns_westbeam_Visar1.tif"
 shot_name = "0409_1635_20ns_1ns_westbeam_Visar1"
 ref_name = "0409_1635_20ns_1ns_westbeam_Visar1"
+ref_folder = "../RefFolder"
 sweep_speed = 20
 slit_size = 500
 info_csv_path = "./python_analysis/info.csv"
+import time
 
 def create_info_csv(shot_name, ref_name, sweep_speed, slit_size, info_csv_path=info_csv_path):
     new_rows = [
@@ -31,9 +34,6 @@ def create_info_csv(shot_name, ref_name, sweep_speed, slit_size, info_csv_path=i
     print(f"Saved shot/ref info to {info_csv_path}")
 
 #Testing...
-get_data = 0
-show_base_tif = 0
-test_lineout = 0
 test_ref = 0
 test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
@@ -41,7 +41,8 @@ demo_img_correction = 0 #demonstrates improvement from the correction
 test_interactive_ref_plot = 0 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
 test_synthetic_beam_lineout = 0
-test_shot_aligner_plot = 1 #tests the interactive plot for shot alignment
+test_shot_aligner_plot = 0 #tests the interactive plot for shot alignment
+test_ref_save = 1 #test to see if the files save appropriately
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -49,8 +50,13 @@ if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, te
     create_info_csv(shot_name, ref_name, sweep_speed, slit_size)
 
 #Tests
-if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
-    ref = RefImage(ref_file, sweep_speed, slit_size)
+if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data, test_ref_save]):
+    if not os.path.exists(ref_folder):
+        os.mkdir(ref_folder)
+    ref = RefImage(fname = ref_file, 
+                   folder = ref_folder,
+                   sweep_speed = sweep_speed, 
+                   slit_size = slit_size)
     create_info_csv(shot_name, ref_name, sweep_speed, slit_size)
 
 if test_ref == True:
@@ -140,3 +146,31 @@ if test_shot_aligner_plot == True:
     aligner = ShotAligner(img)
     aligner.initialize_plot()
     aligner.show_plot()
+
+if test_ref_save == True:
+    ref.chop_beam(ybounds = (0, 450), num_slices = 20)
+    ref.save_chop_as_correction()
+    fmin = 460
+    fmax = 473
+    bmin = 3
+    bmax = 450
+    ref.take_lineouts(450, 500, 0, 400)
+    ref.save_lineouts()
+
+    #PLOT everything
+    fig = plt.figure(figsize = (5, 8))
+    ax1 = fig.add_subplot(2, 1, 1)
+    ax2 = fig.add_subplot(2, 1, 2, sharex = ax1)
+    ref.img.show_data(ax1)
+    ax2.plot(ref.img.time, ref.fiducial_lineout, label = "Fiducial")
+    ax2.plot(ref.img.time, ref.beam_lineout, label = "Beam")
+    ax1.axhline(fmin, xmin = ref.img.time.min(), xmax = ref.img.time.max(), color = "lime", label = "Fiducial Bounds")
+    ax1.axhline(fmax, xmin = ref.img.time.min(), xmax = ref.img.time.max(), color = "lime")
+    ax1.axhline(bmin, xmin = ref.img.time.min(), xmax = ref.img.time.max(), color = "yellow", label = "Beam Bounds")
+    ax1.axhline(bmax, xmin = ref.img.time.min(), xmax = ref.img.time.max(), color = "yellow")
+    ax1.legend()
+    ax2.legend()
+    plt.show()
+
+    ref.delete_folder()
+
