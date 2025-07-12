@@ -223,3 +223,60 @@ class BeamAligner:
         self.set_sliders()
         self.set_buttons()
         plt.show()
+
+class ShotAligner:
+    """
+    Class for aligning a shot
+    """
+    def __init__(self, img:VISARImage):
+        self.img = img
+        self.name = f"{img.fname.split('/')[-1].lower().replace('.tif', '')}"
+
+    def initialize_plot(self):
+        self.fig = plt.figure(figsize = (10, 8))
+        gs = GridSpec(3, 1, figure = self.fig)
+
+        #create axes
+        self.img_ax = self.fig.add_subplot(gs[:2, 0])
+        self.img_ax.set_title(f"Time & Space Calibration: {self.name}")
+        self.lineout_ax = self.fig.add_subplot(gs[2,0])
+        plt.setp(self.img_ax.get_xticklabels(), visible=False)
+
+        #Label timing and shearing sections
+        self.fig.text(0.75, 0.7, "Shearing", size = "large", weight = "bold")
+        self.fig.text(0.75, 0.3, "Timing", size = "large", weight = "bold")
+
+        #create room for buttons
+        self.fig.subplots_adjust(right = 0.7, bottom = 0.2)
+
+        #create shearing button axes
+        self.add_shear_button_ax = self.fig.add_axes([0.72, 0.6, 0.14, 0.07])
+        self.shear_button_ax = self.fig.add_axes([0.72, 0.5, 0.14, 0.07])
+        self.save_shear_button_ax = self.fig.add_axes([0.72, 0.4, 0.14, 0.07])
+
+        #create shearing buttons
+        self.add_shear_button = Button(self.add_shear_button_ax, label = "Add Shear")
+        self.shear_button = Button(self.shear_button_ax, label = "Shear")
+        self.save_shear_button = Button(self.save_shear_button_ax, label = "Save Shear")
+
+        #create shear slider
+        self.shear_slider_ax = self.fig.add_axes([0.9, 0.4, 0.03, 0.25])
+        self.shear_slider = Slider(ax = self.shear_slider_ax, label = "Shear\nAngle", valmin = -3, valmax = 3, valinit = 0, orientation = "vertical")
+
+        #bottom sliders
+        self.colormap_slider_ax = self.fig.add_axes([0.15, 0.1, 0.45, 0.03])
+        self.time_shift_slider_ax = self.fig.add_axes([0.15, 0.06, 0.45, 0.03])
+        self.breakout_time_slider_ax = self.fig.add_axes([0.15, 0.02, 0.45, 0.03])
+        self.colormap_slider = RangeSlider(self.colormap_slider_ax, "Heatmap\nThreshold", self.img.data.min(), self.img.data.max())
+        self.time_shift_slider = Slider(self.time_shift_slider_ax, "Start Time", -5, 5, valinit = 0)
+        self.breakout_time_slider = Slider(self.breakout_time_slider_ax, "Breakout Time", valmin = self.img.time.min(), valmax = self.img.time.max(), valinit = 0)
+
+        #timing buttons
+        self.save_time_calibration_ax = self.fig.add_axes([0.72, 0.1, 0.14 ,0.07])
+        self.center_time_ax = self.fig.add_axes([0.72, 0.2, 0.14,0.07])
+        self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
+        self.center_time_button = Button(self.center_time_ax, "Center Time")
+
+        #Beam Calibration Button
+        self.beam_calibration_ax = self.fig.add_axes([0.72, 0.8, 0.14, 0.07])
+        self.beam_calibration_button = Button(self.beam_calibration_ax, "Apply Beam\nCalibration")

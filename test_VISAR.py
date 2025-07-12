@@ -13,9 +13,10 @@ test_ref = 0
 test_ref_split = 0
 test_image_correction = 0 #plots a corrected image
 demo_img_correction = 0 #demonstrates improvement from the correction
-test_interactive_ref_plot = 1 #tests the interactive reference timing plot
+test_interactive_ref_plot = 0 #tests the interactive reference timing plot
 test_initialize_image_w_data = 0 #tests image initialization with data
 test_synthetic_beam_lineout = 0
+test_shot_aligner_plot = 1 #tests the interactive plot for shot alignment
 
 if test_ref == True:
     # 20 ns ref file
@@ -106,4 +107,11 @@ if test_synthetic_beam_lineout == True:
     #If the tif doesn't currently exist, save it
     if os.path.exists("SyntheticData/20nsBeamReference.tif") == False:
         synthetic_img.save_tif("SyntheticData/20nsBeamReference.tif")
+    plt.show()
+
+if test_shot_aligner_plot == True:
+    shot_file = "../JLF_2025/VISAR1/0408_1452_Shot54_Visar1_ref.tif"
+    img = VISARImage(shot_file)
+    aligner = ShotAligner(img)
+    aligner.initialize_plot()
     plt.show()
