@@ -44,8 +44,9 @@ test_synthetic_beam_lineout = 0
 test_shot_aligner_plot = 0 #tests the interactive plot for shot alignment
 test_ref_save = 0 #test to see if the files save appropriately
 test_synthetic_beam_interactive_plot = 0
-test_synthetic_shot_ref = 1 #generates a synthetic shot reference
+test_synthetic_shot_ref = 0 #generates a synthetic shot reference
 test_synthetic_phase_generation = 0 #passes in a velocity profile and plots the phase
+test_time_chop = 1 #tests chopping data by time
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -227,5 +228,19 @@ if test_synthetic_phase_generation == True:
     ax2.plot(synthetic.time, synthetic.fringe_shift)
     ax1.set_title("Velocity")
     ax2.set_title("Fringe Shift")
+    plt.tight_layout()
+    plt.show()
+
+if test_time_chop == True:
+    #tests time chopping for a VISARImage
+    img = VISARImage(fname = "SyntheticData/20nsShot.tif")
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax2 = fig.add_subplot(1, 2, 2)
+    img.show_data(ax1, minmax = (0.01, img.data.max()))
+    img.chop_by_time(min_time = 3, max_time = 18)
+    img.show_data(ax2, minmax = (0.01, img.data.max()))
+    ax1.set_title("Raw Image")
+    ax2.set_title("Time Chopped")
     plt.tight_layout()
     plt.show()

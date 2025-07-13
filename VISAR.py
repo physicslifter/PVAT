@@ -64,6 +64,12 @@ class ImageCorrection:
         data = pd.DataFrame({"space": self.space, "time_shift":self.time_shift})
         data.to_csv(fname)
 
+    def get_inverse(self):
+        """
+        Inverses the correction
+        """
+        self.time_shift = -self.time_shift
+
     def plot(self, ax=None, flip:bool = False):
         """
         ax specifies an axis
@@ -190,13 +196,26 @@ class VISARImage:
         """
         self.time += -time
 
-    def apply_correction(self, correction:ImageCorrection):
+    def chop_by_time(self, min_time, max_time):
+        """
+        removes data before min_time and after max_time
+        """
+        min_index = int(min_time/self.time_resolution)
+        max_index = int(max_time/self.time_resolution)
+        self.data = self.data[:, min_index:max_index]
+        self.time = self.time[min_index:max_index]
+
+    def apply_correction(self, correction:ImageCorrection, negative = False):
         """
         Given an ImageCorrection, this function corrects the image accordingly
+        
+        if negative == True, apply the opposite correction
         """
         #Divide image into chunks according to the correction
         c = 0
         #Get any data before the correction
+        if negative == True:
+            correction.get_inverse()
         initial_chunk = self.take_chunk(min_val = max(correction.maxes), max_val = max(self.space))
         #get any data after the correction
         final_chunk = self.take_chunk(min_val = min(self.space), max_val = min(correction.mins))
@@ -252,6 +271,8 @@ class VISARImage:
         new_min = min(self.time) + min_neg_shift*self.time_resolution
         new_max = max(self.time) + max_pos_shift*self.time_resolution
         self.time = np.linspace(new_min, new_max, self.data.shape[1])
+        if negative == True: #flip correction back if we've flipped it
+            correction.get_inverse()
 
 class RefImage:
     def __init__(self, fname:str=None, folder:str=None, sweep_speed:int = 20, slit_size:int = 500):
@@ -276,9 +297,10 @@ class RefImage:
         2. if overwrite == True, treat the data folder as if it's empty
         """
         self.img = VISARImage(fname = self.fname, sweep_speed = self.sweep_speed, slit_size = self.slit_size)
-        print(os.path.exists(self.folder))
-        if not os.path.exists(f"{self.folder}"):
-            os.mkdir(self.folder)
+        if type(self.folder) != type(None):
+            print(os.path.exists(self.folder))
+            if not os.path.exists(f"{self.folder}"):
+                os.mkdir(self.folder)
 
     def show_raw_visar(self, minmax = None):
         fig = plt.subplots()
@@ -330,7 +352,8 @@ class RefImage:
             self.correction.create(space = self.img.space, time_shift = np.zeros(self.img.space))
         else: #if beam has been chopped, save the most recent correction
             self.correction.create(space = self.locs, time_shift = -np.array(self.time_shifts))
-        self.correction.save(fname = f"{self.folder}/correction.csv")
+        if type(self.folder) != type(None):
+            self.correction.save(fname = f"{self.folder}/correction.csv")
         self.has_correction = True
 
     def plot_chop(self, minmax, savename:str=None, show:bool=True):
