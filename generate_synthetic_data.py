@@ -4,6 +4,9 @@ Script for generating synthetic data
 from VISAR import *
 from SyntheticData import *
 
+if not os.path.exists("SyntheticData"):
+    os.mkdir("SyntheticData")
+
 #Generate a Beam Reference
 synthetic_beam = SyntheticBeamCalibration(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
 synthetic_beam.generate_background(500)
