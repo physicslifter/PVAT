@@ -39,6 +39,15 @@ def gaussian_2d(x, y, amplitude, xo, yo, sigma_x, sigma_y):
     exponent = -(((x - xo)**2) / (2 * sigma_x**2) + ((y - yo)**2) / (2 * sigma_y**2))
     return amplitude * np.exp(exponent)
 
+def get_phase(time, velocity, vpf):
+    """
+    time: time profile for velocity/phase lineouts
+    velocity: velocity as a function of time
+    vpf: velocity per fringe for the setup
+    """
+    v0 = velocity[0]
+    fringe_shift = (velocity - v0)/vpf
+
 class SyntheticData:
     def __init__(self, 
                  sweep_speed, 
@@ -151,14 +160,38 @@ class SyntheticShot(SyntheticData):
                  ):
        super().__init__(sweep_speed, slit_size, time_points, space_points)
 
-    def generate_fringes(self, spacing, intensity):
-        #generates interference fringes w/o shift for given spacing and intensity
-        fringe_locs = np.linspace(self.space.min(), self.space.max(), spacing)
-        def fringe_generator(space, time): #function for generating waves from the sine wave
-            #for flat fringes
-            return intensity * np.sin(2*np.pi*spacing*self.space)
-        shape = (self.space_points, self.time_points)
-        fringe_data = np.fromfunction(fringe_generator, shape)
-        print(fringe_data.shape, shape)
+    def generate_fringes(self, 
+                         num_fringes, 
+                         intensity, 
+                         velocity, 
+                         vpf,
+                         fringe_max,
+                         fringe_min):
+        """
+        num_fringes: the number of fringes to get on the image
+        intensity: peak intensity of the fringes
+        velocity: a 1d velocity profile that will dictate fringe shift
+        vpf: velocity per fringe setting of the VISAR
+        fringe_max: maximum space position of the fringes
+        fringe_min: minimum space position of the fringes
+        """
+        space_per_fringe = (fringe_max - fringe_min)/num_fringes
+        min_loc = int(fringe_min/self.space_resolution)
+        max_loc = int(fringe_max/self.space_resolution)
+        fringe_space = self.space[min_loc:max_loc]
+        self.generate_phase(velocity, vpf)
+        time_lineouts = []
+        for c, time in enumerate(self.time):
+            fringe_data = 0.5*intensity*np.sin(space_per_fringe*(fringe_space - fringe_space[0]) + np.random.random()*self.space_resolution + self.fringe_shift[c])+0.5*intensity
+            #append 0s where there shouldn't be fringes
+            fringe_data = np.pad(fringe_data, (min_loc, self.space_points - max_loc), mode = "constant", constant_values = 0)
+            time_lineouts.append(fringe_data)
+        fringe_data = np.vstack(time_lineouts).T
         self.data += fringe_data
+
+    def generate_phase(self, velocity, vpf):
+        if len(velocity) != len(self.time):
+            raise Exception("Velocity must be same length as time axis")
+        self.fringe_shift = (velocity - velocity[0])/vpf
+
 

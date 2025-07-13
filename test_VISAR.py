@@ -45,6 +45,7 @@ test_shot_aligner_plot = 0 #tests the interactive plot for shot alignment
 test_ref_save = 0 #test to see if the files save appropriately
 test_synthetic_beam_interactive_plot = 0
 test_synthetic_shot_ref = 1 #generates a synthetic shot reference
+test_synthetic_phase_generation = 0 #passes in a velocity profile and plots the phase
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -191,11 +192,40 @@ if test_synthetic_shot_ref == True:
     Shows a synthetic shot reference (w/ 0 fringe shift)
     """
     synthetic = SyntheticShot(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
-    synthetic.generate_fiducial(time_loc = 3.2, space_loc = 465, amp = 2000, width = 4, height = 10)
-    synthetic.generate_fringes(spacing = 10, intensity = 2000)
+    velocity_profile = 5*np.tanh((synthetic.time - 2)*10) + 5
+    #synthetic.generate_fiducial(time_loc = 3.2, space_loc = 465, amp = 2000, width = 4, height = 10)
+    synthetic.generate_background(1000)
+    synthetic.generate_fringes(num_fringes = 10,
+                               intensity = 2000,
+                               velocity = velocity_profile,
+                               vpf = 3.4,
+                               fringe_max = 440,
+                               fringe_min = 0)
+    synthetic.generate_fiducial(time_loc = 5, space_loc = 465, amp = 2000, width = 4, height = 10)
     synthetic_img = VISARImage(fname = None, data = synthetic.data, sweep_speed = synthetic.sweep_speed, slit_size = synthetic.slit_size)
-    fig = plt.subplots()
-    ax = plt.subplot(1, 1, 1)
+    fig = plt.figure(figsize = (5, 8))
+    ax = fig.add_subplot(2, 1, 2)
+    ax2 = fig.add_subplot(2, 1, 1, sharex = ax)
     ax.set_title("Simulated Beam Reference")
-    synthetic_img.show_data(ax, minmax = (simulated.data.min(), simulated.data.max()))
+    print(synthetic.data.min(), synthetic.data.max())
+    print(synthetic_img.data.min(), synthetic_img.data.max())
+    synthetic_img.show_data(ax, minmax = (synthetic.data.min(), synthetic.data.max()))
+    ax2.plot(synthetic.time, velocity_profile)
+    ax2.set_title("Velocity")
+    ax.set_title("Synthetic Data Generated from Velocity")
+    plt.tight_layout()
+    plt.show()
+
+if test_synthetic_phase_generation == True:
+    synthetic = SyntheticShot(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
+    velocity_profile = 5*np.tanh(((synthetic.time - 2)*10)) + 5
+    synthetic.generate_phase(velocity_profile, vpf = 3.2)
+    fig = plt.figure()
+    ax1 = fig.add_subplot(2, 2, 1)
+    ax2 = fig.add_subplot(2, 2, 3, sharex = ax1)
+    ax1.plot(synthetic.time, velocity_profile)
+    ax2.plot(synthetic.time, synthetic.fringe_shift)
+    ax1.set_title("Velocity")
+    ax2.set_title("Fringe Shift")
+    plt.tight_layout()
     plt.show()
