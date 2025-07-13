@@ -66,6 +66,36 @@ class SyntheticData:
 
     def generate_space(self):
         self.space = np.linspace(0, self.slit_size, self.space_points)
+        self.space_resolution = self.slit_size/self.space_points
+
+    def generate_background(self, amp):
+        """
+        Generates a background with some noise for the shot
+        """
+        self.background = amp*(np.random.random([self.space_points, self.time_points])+0.5)
+        self.data += self.background
+
+    def generate_fiducial(self, time_loc, space_loc, amp, width, height):
+        """
+        Generates a fiducial for the shot, with a certain offset for the fiducial from the drive beam
+        The fiducial will appear at the specified time/space
+        """
+        sigma_x = width/(2*(2*np.log(2))**0.5)
+        sigma_y = height/(2*(2*np.log(2))**0.5)
+        fiducial_lines = []
+        for i in self.space:
+            fiducial_line = gaussian_2d(self.time,
+                                     i,
+                                     amplitude = amp,
+                                     xo = time_loc,
+                                     yo = space_loc,
+                                     sigma_x = sigma_x,
+                                     sigma_y = sigma_y
+                                     )
+            fiducial_lines.append(fiducial_line)
+        #Add the fiducial to the data
+        fiducial = np.vstack(fiducial_lines)
+        self.data += fiducial
 
 class SyntheticBeamCalibration(SyntheticData):
     def __init__(self, 
@@ -75,13 +105,6 @@ class SyntheticBeamCalibration(SyntheticData):
                  space_points
                  ):
        super().__init__(sweep_speed, slit_size, time_points, space_points)
-
-    def generate_background(self, amp):
-        """
-        Generates a background with some noise for the shot
-        """
-        self.background = amp*(np.random.random([self.space_points, self.time_points])+0.5)
-        self.data += self.background
 
     def generate_beam(self, center_time, pulse_width, amplitude, max_loc, shift=0):
         """
@@ -115,38 +138,27 @@ class SyntheticBeamCalibration(SyntheticData):
                 count = 1
         beam_data = np.vstack(beam_lines)
         self.data += beam_data
-        
-    def generate_fiducial(self, timing_offset, space_loc, amp, width, height):
-        """
-        Generates a fiducial for the shot, with a certain offset for the fiducial from the drive beam
-        The fiducial will appear at the specified time/space
-        """
-        sigma_x = width/(2*(2*np.log(2))**0.5)
-        sigma_y = height/(2*(2*np.log(2))**0.5)
-        fiducial_lines = []
-        for i in self.space:
-            fiducial_line = gaussian_2d(self.time,
-                                     i,
-                                     amplitude = amp,
-                                     xo = self.beam_center + timing_offset,
-                                     yo = space_loc,
-                                     sigma_x = sigma_x,
-                                     sigma_y = sigma_y
-                                     )
-            fiducial_lines.append(fiducial_line)
-        #Add the fiducial to the data
-        fiducial = np.vstack(fiducial_lines)
-        self.data += fiducial
 
-class SyntheticShot:
+class SyntheticShot(SyntheticData):
     """
     synthetic shot data from JLF
     """
-    
+    def __init__(self, 
+                 sweep_speed, 
+                 slit_size, 
+                 time_points, 
+                 space_points
+                 ):
+       super().__init__(sweep_speed, slit_size, time_points, space_points)
 
-    def generate_data(self):
-        """
-        Generates synthetic data for the setup
-        """
-        pass
+    def generate_fringes(self, spacing, intensity):
+        #generates interference fringes w/o shift for given spacing and intensity
+        fringe_locs = np.linspace(self.space.min(), self.space.max(), spacing)
+        def fringe_generator(space, time): #function for generating waves from the sine wave
+            #for flat fringes
+            return intensity * np.sin(2*np.pi*spacing*self.space)
+        shape = (self.space_points, self.time_points)
+        fringe_data = np.fromfunction(fringe_generator, shape)
+        print(fringe_data.shape, shape)
+        self.data += fringe_data
 

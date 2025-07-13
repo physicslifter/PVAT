@@ -248,6 +248,7 @@ class VISARImage:
         #Put chunks back together to get new data
         self.data = np.vstack(chunks)
         #get new time axis
+        self.data = np.nan_to_num(self.data, nan = 0)
         new_min = min(self.time) + min_neg_shift*self.time_resolution
         new_max = max(self.time) + max_pos_shift*self.time_resolution
         self.time = np.linspace(new_min, new_max, self.data.shape[1])

@@ -43,7 +43,8 @@ test_initialize_image_w_data = 0 #tests image initialization with data
 test_synthetic_beam_lineout = 0
 test_shot_aligner_plot = 0 #tests the interactive plot for shot alignment
 test_ref_save = 0 #test to see if the files save appropriately
-test_synthetic_beam_interactive_plot = 1
+test_synthetic_beam_interactive_plot = 0
+test_synthetic_shot_ref = 1 #generates a synthetic shot reference
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -129,7 +130,7 @@ if test_synthetic_beam_lineout == True:
     simulated = SyntheticBeamCalibration(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
     simulated.generate_background(500)
     simulated.generate_beam(3.5, 1, 2500, max_loc = 430, shift = 2/500)
-    simulated.generate_fiducial(timing_offset = 3.2, space_loc = 465, amp = 2000, width = 4, height = 10)
+    simulated.generate_fiducial(time_loc = 5, space_loc = 465, amp = 2000, width = 4, height = 10)
     synthetic_img = VISARImage(fname = None, data = simulated.data, sweep_speed = simulated.sweep_speed, slit_size = simulated.slit_size)
     fig = plt.subplots()
     ax = plt.subplot(1, 1, 1)
@@ -149,6 +150,7 @@ if test_synthetic_beam_interactive_plot == True:
     aligner = BeamAligner(ref)
     aligner.initialize_plot()
     aligner.show_plot()
+    aligner.ref.delete_folder()
 
 if test_shot_aligner_plot == True:
     shot_file = "../JLF_2025/VISAR1/0408_1452_Shot54_Visar1_ref.tif"
@@ -184,3 +186,16 @@ if test_ref_save == True:
     #while showing the plot, you can go look for the saved folder
     ref.delete_folder()
 
+if test_synthetic_shot_ref == True:
+    """
+    Shows a synthetic shot reference (w/ 0 fringe shift)
+    """
+    synthetic = SyntheticShot(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
+    synthetic.generate_fiducial(time_loc = 3.2, space_loc = 465, amp = 2000, width = 4, height = 10)
+    synthetic.generate_fringes(spacing = 10, intensity = 2000)
+    synthetic_img = VISARImage(fname = None, data = synthetic.data, sweep_speed = synthetic.sweep_speed, slit_size = synthetic.slit_size)
+    fig = plt.subplots()
+    ax = plt.subplot(1, 1, 1)
+    ax.set_title("Simulated Beam Reference")
+    synthetic_img.show_data(ax, minmax = (simulated.data.min(), simulated.data.max()))
+    plt.show()

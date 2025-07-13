@@ -115,7 +115,7 @@ class BeamAligner:
     def get_half_max(self, time, lineout):
         #gets the half max of a beam profile
         lineout = lineout
-        peak = GaussianPeak(x = time, y = lineout)
+        peak = GaussianPeak(x = time, y = np.nan_to_num(lineout, nan = 0))
         print(peak.background/lineout.max(), peak.amp/lineout.max(), peak.mean/lineout.max(), peak.std_dev/lineout.max())
         scaled_background = peak.background/lineout.max()
         loc = scaled_background + 0.5*(1 - scaled_background)
@@ -147,7 +147,6 @@ class BeamAligner:
 
     def click_get_chop(self, val):
         self.ref.chop_beam(ybounds = (self.beam_lineout_slider.val[0], self.beam_lineout_slider.val[1]), num_slices = int(self.chopper_slider.val))
-        self.ref.save_chop_as_correction()
         self.ref.plot_chop(minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
 
     def click_zero_time(self, val):
@@ -172,13 +171,7 @@ class BeamAligner:
 
     def click_apply_correction(self, val):
         #Save the correction
-        if self.has_chop == False: #Do nothing if there isn't a chop yet
-            pass
-        else:
-            if self.correction_save_name != None:
-                self.ref.save_chop_as_correction(fname = self.correction_save_name)
-            else:
-                self.ref.save_chop_as_correction()
+        self.ref.save_chop_as_correction() #saves most recent chop as the correction
         
         #Apply the correction to the data
         self.ref.img.apply_correction(self.ref.correction)
@@ -190,7 +183,13 @@ class BeamAligner:
 
         self.fig.canvas.draw_idle()
 
+    def get_lineout_save_name(self):
+        if type(self.timing_save_name) == type(None):
+            self.timing_save_name = f"{self.ref.folder}/lineouts.csv"
+
     def click_save_time_cal(self, val):
+        self.get_lineout_save_name()
+        print(self.timing_save_name)
         if self.timing_save_name != None:
             fiducial_lineout = self.fiducial_lineout.get_ydata()
             beam_lineout = self.beam_lineout.get_ydata()
@@ -199,8 +198,8 @@ class BeamAligner:
             df.to_csv(self.timing_save_name)
 
             #updates saved CSV, PNG
-            plot_filename = self.timing_save_name.replace('.csv', '.png')
-            self.fig.savefig(plot_filename) #new
+            #plot_filename = self.timing_save_name.replace('.csv', '.png')
+            #self.fig.savefig(plot_filename) #new
         else:
             pass
 
