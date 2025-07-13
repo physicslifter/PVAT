@@ -8,7 +8,15 @@ Python VISAR Analysis Tool
 - PIL
 - scipy!
   
-# Tutorials  
+# Tutorials
+
+## Generate Synthetic Data
+If you don't have any data yet, you need to generate synthetic data. You can automatically generate synthetic beam, shot reference, and shot data by running:
+```
+python generate_synthetic_data.py
+```
+And the tifs for the synthetic data will be put in /SyntheticData
+
 ## Align a Beam reference  
 Use the below code to align a beam reference. We use the synthetically generated 20ns beam reference
 ```
