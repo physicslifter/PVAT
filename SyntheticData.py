@@ -133,7 +133,7 @@ class SyntheticBeamCalibration(SyntheticData):
                 if count == 1:
                     line_data = gaussian(x = self.time, 
                                          a = amplitude + np.random.normal()*amplitude/10, 
-                                         b = center_time + +shift*(self.space.max() - i) + np.random.normal()*self.time_resolution*self.time_points/100, 
+                                         b = center_time + shift*(self.space.max() - i) + np.random.normal()*self.time_resolution*self.time_points/100, 
                                          c = std_dev, 
                                          background = 0)
                 else:
