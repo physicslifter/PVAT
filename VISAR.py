@@ -146,7 +146,7 @@ class VISARImage:
         min_val = int(min_val/self.space_per_pixel)
         max_val = int(max_val/self.space_per_pixel)
         max_val = max_val + 1 if at_max_space == True else max_val
-        print(min_val, max_val)
+        #print(min_val, max_val)
         chunk = self.data[min_val:max_val]
         return chunk
     
@@ -187,7 +187,7 @@ class VISARImage:
         #saves the current image as a tif file
         if save_name.split(".")[-1] != "tif":
             raise Exception("Must save as a .tif file")
-        print(type(self.data))
+        #print(type(self.data))
         imsave(save_name, self.data.astype(np.float32).T)
 
     def set_time_to_zero(self, time):
@@ -333,7 +333,7 @@ class RefImage:
         """
         self.img = VISARImage(fname = self.fname, sweep_speed = self.sweep_speed, slit_size = self.slit_size)
         if type(self.folder) != type(None):
-            print(os.path.exists(self.folder))
+            #print(os.path.exists(self.folder))
             if not os.path.exists(f"{self.folder}"):
                 os.mkdir(self.folder)
 
@@ -438,7 +438,7 @@ class RefImage:
     def save_lineouts(self):
         df = pd.DataFrame({"time":self.img.time, "fiducial":self.fiducial_lineout, "beam":self.beam_lineout})
         df.to_csv(f"{self.folder}/lineouts.csv")
-        print("Saved")
+        #print("Saved")
 
     def delete_folder(self):
         """
