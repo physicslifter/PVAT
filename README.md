@@ -14,12 +14,15 @@ More python examples can be observed in test_VISAR.py
   
 # Tutorial
 
-## Setup the Analysis folder
-1. Once you have the repository,set up the analysis & generate synthetic data
+1. Once you have the repository, install requirements
+```
+pip install -r requirements.txt
+```
+2. Generate Synthetic data and set up the general analysis folder
 ```
 python setup.py
 ```
-And the tifs for the synthetic data will be put in /SyntheticData  
+(tifs for the synthetic data will be put in /SyntheticData ) 
 
 2. Open the cli
 ```
