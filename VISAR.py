@@ -227,6 +227,9 @@ class VISARImage:
                 shift = int(slope*time_index)
                 slice = self.data[:,time_index]
                 end_pad = max_shift - shift
+                if angle < 0:
+                    #if a negative shear, swap before and after vals
+                    shift, end_pad = np.abs(end_pad), np.abs(shift)
                 sheared_slice = np.pad(slice, (shift, end_pad), "constant", constant_values = (0, 0))
                 sheared_slices.append(sheared_slice)
         self.data = np.vstack(sheared_slices).T
