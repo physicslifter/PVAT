@@ -1,11 +1,27 @@
 """
 CLI for performing analyses
 """
-from AnalysisManager import AnalysisManager
+from AnalysisManager import AnalysisManager, AM2
+import os
+import sys
+
+def get_response(msg, valid_options, failure_msg = None):
+    answer = None
+    while answer not in valid_options:
+        print(msg)
+        answer = input()
+        if answer.upper() == "Q":
+            break
+        answer = int(answer)
+        if answer not in valid_options and failure_msg != None:
+            print(failure_msg)
+    return answer
 
 class CLI:
     def __init__(self):
+        self.manager = AnalysisManager("Analysis")
         self.print_welcome_message()
+        self.analysis_prompt()
     
     def print_welcome_message(self):
         #print welcome msg
@@ -27,15 +43,63 @@ class CLI:
         print("     (1) Start new analysis")
         print("     (2) Open saved analysis")
         self.welcome_response = int(input())
+        self.handle_welcome_response()
 
     def handle_welcome_response(self):
         if self.welcome_response == 1:
             #start new analysis
-            base_directory = input("Enter fpath for base directory: \n")
-            self.manager = AnalysisManager(base_directory)
+            self.manager = AM2("Analysis")
+            analysis_name = "1"
+            while analysis_name == "1":
+                analysis_name = input("Enter Name for Analysis: (Press 1 to view all analysis names)\n")
+                if analysis_name == "1":
+                    print([i for i in os.listdir(self.manager.base_folder) if "." not in i])
+                if analysis_name in os.listdir(self.manager.base_folder):
+                    print("Analysis already exists, enter another name\n")
+                    analysis_name = "1"
+            self.manager.create_new_analysis(analysis_name)
+            print(f"\n\n\n==\nANALYSIS: {analysis_name}")
+
         elif self.welcome_response == 2:
             #open a saved analysis
-            pass
+            raise Exception("Response 2 not handled")
+        
+        else:
+            raise Exception("Must be 1 or 2")
+        
+    def analysis_prompt(self):
+        """
+        Prompt to run once analysis has been opened
+        """
+        msg = "What would you like to do?\n(1) Start new analysis\n(2) Open Analysis\n(Q) Quit"
+        failure_msg = "Must be (1) or (2)"
+        self.analysis_response = get_response(msg, [1, 2], failure_msg)
+        if self.analysis_response == "Q":
+            sys.exit(0)
+        self.handle_analysis_response()
+
+    def handle_analysis_response(self):
+        msg = "What type of analysis?\n (1) Beam reference\n (2) Shot reference\n (3) Shot\n (Q) Quit"
+        failure_msg = "Must be 1, 2 or 3"
+        a_type = get_response(msg, [1, 2, 3], failure_msg)
+        if a_type == "Q":
+            sys.exit(0)
+        if self.analysis_response == 1:
+            if a_type == 1:
+                msg = "Select Ref file:\n"
+                valid_beam_refs = []
+                for i, ref_name in enumerate(self.manager.beam_refs):
+                    msg += f" ({i+1}) {ref_name}"
+                    valid_beam_refs.append(i + 1)
+                ref_num = get_response(msg, valid_beam_refs, "Invalid response")
+                ref_name = self.manager.beam_refs[ref_num - 1]
+                analysis_name = input("Enter Analysis Name:\n")
+                self.manager.analyze_beam_ref(name = ref_name)
+            if a_type == 2:
+                pass
+
+        
+    
 
 
 #run the command line

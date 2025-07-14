@@ -195,3 +195,74 @@ class AnalysisManager:
     def remove_analysis(self):
         #deletes an analysis
         shutil.rmtree(self.base_directory)
+
+class AM2:
+    """
+    Simple analysis manager to read that works from excel file in Analysis folder
+    """
+    def __init__(self, base_folder):
+        self.base_folder = base_folder
+        if not os.path.exists(self.base_folder):
+            raise Exception("Base folder not found")
+        self.get_excel()
+        self.has_folder = False
+
+    def get_excel(self):
+        """
+        Pulls info from the base folder
+        """
+        self.info = pd.read_excel(f"{self.base_folder}/info.xlsx")
+        self.beam_refs = self.info.where(self.info["Type"] == "beam_ref")["Name"].dropna().values
+        self.shot_refs = self.info.where(self.info["Type"] == "shot_ref")["Name"].dropna().values
+        self.shots = self.info.where(self.info["Type"] == "shot")["Name"].dropna().values
+
+    def get_filename(self, name):
+        "Given an img name, get the file for the img"
+        return self.info.where(self.info["Name"] == name).dropna()["Fname"].values[0]
+
+    def create_new_analysis(self, name):
+        self.analysis_name = name
+        os.mkdir(f"{self.base_folder}/{name}")
+        os.mkdir(f"{self.base_folder}/{name}/Shots")
+        os.mkdir(f"{self.base_folder}/{name}/ShotRefs")
+        os.mkdir(f"{self.base_folder}/{name}/BeamRefs")
+        self.has_folder = True
+
+    def open_analysis(self, name):
+        self.analysis_name = name
+        if name not in os.listdir(self.base_folder):
+            raise Exception("Analysis does not exist")
+
+    def analyze_beam_ref(self, name, analysis_name=None):
+        if name not in self.beam_refs:
+            raise Exception(f"{name} not found in beam references")
+        if self.has_folder == False:
+            raise Exception("Folder must be created before ref can be analyzed")
+        if analysis_name != None and analysis_name in os.listdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs"):
+            raise Exception("This name has already been saved")
+        info = self.info.where(self.info["Name"] == name).dropna()
+        prev_analyses = [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs") if name in i]
+        analysis_name = f"{name}_{len(prev_analyses)}" if analysis_name == None else analysis_name
+        beam_analysis_directory = f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}/{analysis_name}"
+        if not os.path.exists(f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}"):
+            os.mkdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}")
+        os.mkdir(beam_analysis_directory) #make directory for the shot analysis
+        ref = RefImage(fname = info["Fname"].values[0], folder = beam_analysis_directory, sweep_speed = info["sweep_speed"].values[0], slit_size = info["slit_size"].values[0])
+        aligner = BeamAligner(ref_img = ref)
+        aligner.initialize_plot()
+        aligner.show_plot()
+
+    def get_shot_ref_analyses(self, name):
+        """
+        Given an img name, this returns a list
+        of the analyses for that shot
+        """
+        return [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}")]
+    
+    def get_shot_analyses(self, name):
+        return [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/Shots/{name}")]
+    
+    def get_shot_ref_analyses(self, name):
+        return [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/Shot_Refs/{name}")]        
+
+        
