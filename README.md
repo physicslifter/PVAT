@@ -1,21 +1,33 @@
 # PVAT
 Python VISAR Analysis Tool
 
-# Dependencies
-- matplotlib
-- pandas
-- numpy
-- PIL
-- scipy!
-  
-# Tutorials
+# Overview  
+Analyze VISAR in Python  
+Follow the tutorial to:  
+  - Setup analysis folder
+  - generate synthetic data
+  - Walk through the analysis of the synthetic data
 
-## Generate Synthetic Data
-If you don't have any data yet, you need to generate synthetic data. You can automatically generate synthetic beam, shot reference, and shot data by running:
+Below the tutorial are examples for performing functions in python  
+
+More python examples can be observed in test_VISAR.py
+  
+# Tutorial
+
+## Setup the Analysis folder
+1. Once you have the repository,set up the analysis & generate synthetic data
 ```
-python generate_synthetic_data.py
+python setup.py
 ```
-And the tifs for the synthetic data will be put in /SyntheticData
+And the tifs for the synthetic data will be put in /SyntheticData  
+
+2. Open the cli
+```
+python cli.py
+```
+
+
+# Python Examples
 
 ## Align a Beam reference  
 Use the below code to align a beam reference. We use the synthetically generated 20ns beam reference
