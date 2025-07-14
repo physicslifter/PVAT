@@ -205,6 +205,29 @@ class VISARImage:
         self.data = self.data[:, min_index:max_index]
         self.time = self.time[min_index:max_index]
 
+    def shear_data(self, angle):
+        """
+        Given an angle, perform the associated horizontal shear
+        """
+        angle = np.radians(angle)
+        if angle != 0:
+            slope = np.tan(angle)
+            max_shift = int(slope*len(self.time))
+            sheared_slices = []
+            for time_index, time in enumerate(self.time):
+                shift = int(slope*time_index)
+                slice = self.data[:,time_index]
+                end_pad = max_shift - shift
+                sheared_slice = np.pad(slice, (shift, end_pad), "constant", constant_values = (0, 0))
+                sheared_slices.append(sheared_slice)
+        self.data = np.vstack(sheared_slices).T
+        if angle < 0:
+            new_min_space = self.space.min() + max_shift*self.space_per_pixel
+            self.space = np.linspace(new_min_space, self.space.max(), len(self.space) - max_shift)
+        elif angle > 0:
+            new_max_space = self.space.max() + max_shift*self.space_per_pixel
+            self.space = np.linspace(self.space.min(), new_max_space, self.data.shape[0])
+
     def apply_correction(self, correction:ImageCorrection, negative = False):
         """
         Given an ImageCorrection, this function corrects the image accordingly

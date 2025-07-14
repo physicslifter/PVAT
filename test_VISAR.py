@@ -46,7 +46,8 @@ test_ref_save = 0 #test to see if the files save appropriately
 test_synthetic_beam_interactive_plot = 0
 test_synthetic_shot_ref = 0 #generates a synthetic shot reference
 test_synthetic_phase_generation = 0 #passes in a velocity profile and plots the phase
-test_time_chop = 1 #tests chopping data by time
+test_time_chop = 0 #tests chopping data by time
+test_shear = 1 #tests shearing on an image
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -242,5 +243,31 @@ if test_time_chop == True:
     img.show_data(ax2, minmax = (0.01, img.data.max()))
     ax1.set_title("Raw Image")
     ax2.set_title("Time Chopped")
+    plt.tight_layout()
+    plt.show()
+
+if test_shear == True:
+    #tests shearing for an image
+    #==
+    #set up plot
+    fig = plt.figure(figsize = (10, 5))
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax2 = fig.add_subplot(1, 2, 2)
+    ax1.set_title("Before Shear")
+    ax2.set_title("Sheared")
+    #get data
+    fname = "SyntheticData/20nsShot.tif"
+    img = VISARImage(fname)
+    #show initial VISAR image
+    minmax = (400, img.data.max())
+    img.show_data(ax1, minmax = minmax)
+    print(len(img.time))
+    #Draw shear on the initial VISAR image
+    angle = 1
+    ax1.plot(img.time, np.tanh(np.radians(angle))*np.arange(len(img.time)) + img.space.max()/2, label = "Shear")
+    #perform shear
+    img.shear_data(angle)
+    img.show_data(ax2, minmax = minmax)
+    ax1.legend()
     plt.tight_layout()
     plt.show()
