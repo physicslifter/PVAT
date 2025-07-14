@@ -5,6 +5,7 @@ from VISAR import *
 from matplotlib import pyplot as plt
 from matplotlib.widgets import RangeSlider, Slider, Button, TextBox
 from matplotlib.gridspec import GridSpec
+import matplotlib.patheffects as pe
 import pandas as pd
 import numpy as np
 
@@ -241,6 +242,8 @@ class ShotAligner:
         self.showing_visar = False
         self.showing_lineout = False
         self.beam_ref = ""
+        self.has_shear_line = False
+        self.sheared_angle = 0
 
     def initialize_plot(self):
         self.fig = plt.figure(figsize = (10, 8))
@@ -331,12 +334,35 @@ class ShotAligner:
         self.img.update_heatmap_threshold(vmin = val[0], vmax = val[1])
         self.fig.canvas.draw_idle()
 
+    def click_add_shear(self, val):
+        """
+        Add a shear line to the plot for reference
+        """
+        self.shear_line = self.img_ax.plot(self.img.time, np.tan(np.radians(self.shear_slider.val))*np.arange(len(self.img.time))*self.img.space_per_pixel + (self.img.space.max() - self.img.space.min())/2, color = "yellow", lw = 2, path_effects=[pe.Stroke(linewidth=5, foreground='k'), pe.Normal()])
+        self.has_shear_line = True
+        self.fig.canvas.draw_idle()
+
+    def click_shear(self, val):
+        if self.has_shear_line == True:
+            self.img.shear_data(angle = -self.shear_slider.val)
+            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+            self.sheared_angle += -self.shear_slider.val
+            print(self.sheared_angle)
+        self.fig.canvas.draw_idle()
+
+    def update_shear_slider(self, val):
+        if self.has_shear_line == True:
+            self.shear_line[0].set_ydata(np.tan(np.radians(self.shear_slider.val))*np.arange(len(self.img.time))*self.img.space_per_pixel+ (self.img.space.max() - self.img.space.min())/2)
+        self.fig.canvas.draw_idle()
+
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
         self.fiducial_slider.on_changed(self.update_fiducial_bounds)
+        self.shear_slider.on_changed(self.update_shear_slider)
 
     def set_buttons(self):
-        pass
+        self.add_shear_button.on_clicked(self.click_add_shear)
+        self.shear_button.on_clicked(self.click_shear)
 
     def show_plot(self):
         if self.showing_visar == False:
