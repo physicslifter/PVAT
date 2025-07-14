@@ -19,7 +19,7 @@ df = pd.DataFrame({"Name": [], #Name of the data (can be anything)
                    "Fname": [], #file for the shot
                    "sweep_speed": [], #sweep speed for the shot
                    "slit_size": [], #slit size of the camera
-                   "etalon": [] #the width of the etalon
+                   "etalon": [], #the width of the etalon
                    "Ref": [] #name of the reference for the shot
                    })
 # Add synthetic beam reference
