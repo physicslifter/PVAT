@@ -4,6 +4,8 @@ Script for generating synthetic data
 from VISAR import *
 from SyntheticData import *
 
+show = False
+
 if not os.path.exists("SyntheticData"):
     os.mkdir("SyntheticData")
 
@@ -71,4 +73,6 @@ for ax, title, img in zip([ax1, ax2, ax3], ["Beam", "Shot Reference", "Shot"], [
 
 fig.suptitle("Synthetic Data")
 plt.tight_layout()
-plt.show()
+
+if show == True:
+    plt.show()
