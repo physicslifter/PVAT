@@ -7,7 +7,7 @@ import pandas as pd
 from InteractivePlots import BeamAligner
 import shutil
 import re
-#are you happpy now?
+
 class SingleShotAnalysis:
     """
     Class for managing a single analysis
