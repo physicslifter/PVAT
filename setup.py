@@ -24,7 +24,7 @@ df = pd.DataFrame({"Name": [], #Name of the data (can be anything)
 df.loc[0] = [
     "SyntheticBeam",
     "beam_ref",
-    "../SyntheticData/20nsBeamReference.tif",
+    "SyntheticData/20nsBeamReference.tif",
     20,
     500,
     20
@@ -34,7 +34,7 @@ df.loc[0] = [
 df.loc[1] = [
     "SyntheticShotRef",
     "shot_ref",
-    "../SyntheticData/20nsShotReference.tif",
+    "SyntheticData/20nsShotReference.tif",
     20,
     500,
     20
@@ -44,7 +44,7 @@ df.loc[1] = [
 df.loc[2] = [
     "SyntheticShot",
     "shot",
-    "../SyntheticData/20nsShot.tif",
+    "SyntheticData/20nsShot.tif",
     20,
     500,
     20
