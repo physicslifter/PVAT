@@ -4,6 +4,7 @@ after downloading the repository
 """
 import os
 import pandas as pd
+from numpy import nan
 
 #Generate the Synthetic Data
 import generate_synthetic_data
@@ -19,6 +20,7 @@ df = pd.DataFrame({"Name": [], #Name of the data (can be anything)
                    "sweep_speed": [], #sweep speed for the shot
                    "slit_size": [], #slit size of the camera
                    "etalon": [] #the width of the etalon
+                   "Ref": [] #name of the reference for the shot
                    })
 # Add synthetic beam reference
 df.loc[0] = [
@@ -27,7 +29,8 @@ df.loc[0] = [
     "SyntheticData/20nsBeamReference.tif",
     20,
     500,
-    20
+    20,
+    nan
 ]
 
 #synthetic shot reference
@@ -37,7 +40,8 @@ df.loc[1] = [
     "SyntheticData/20nsShotReference.tif",
     20,
     500,
-    20
+    20,
+    nan
 ]
 
 #synthetic shot reference
@@ -47,7 +51,8 @@ df.loc[2] = [
     "SyntheticData/20nsShot.tif",
     20,
     500,
-    20
+    20,
+    "SyntheticShotRef"
 ]
 
 #save excel to Analysis folder

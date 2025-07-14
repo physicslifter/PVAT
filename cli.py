@@ -71,9 +71,9 @@ class CLI:
         """
         Prompt to run once analysis has been opened
         """
-        msg = "What would you like to do?\n(1) Start new analysis\n(2) Open Analysis\n(Q) Quit"
-        failure_msg = "Must be (1) or (2)"
-        self.analysis_response = get_response(msg, [1, 2], failure_msg)
+        msg = "What would you like to do?\n(1) Analyze a Beam Reference\n(2) Analyze a Shot Reference\n(3) Analyze a Shot\n(Q) Quit"
+        failure_msg = "Must be (1), (2) or (3)"
+        self.analysis_response = get_response(msg, [1, 2, 3], failure_msg)
         if self.analysis_response == "Q":
             sys.exit(0)
         self.handle_analysis_response()
@@ -81,22 +81,15 @@ class CLI:
     def handle_analysis_response(self):
         msg = "What type of analysis?\n (1) Beam reference\n (2) Shot reference\n (3) Shot\n (Q) Quit"
         failure_msg = "Must be 1, 2 or 3"
-        a_type = get_response(msg, [1, 2, 3], failure_msg)
-        if a_type == "Q":
-            sys.exit(0)
-        if self.analysis_response == 1:
-            if a_type == 1:
-                msg = "Select Ref file:\n"
-                valid_beam_refs = []
-                for i, ref_name in enumerate(self.manager.beam_refs):
-                    msg += f" ({i+1}) {ref_name}"
-                    valid_beam_refs.append(i + 1)
-                ref_num = get_response(msg, valid_beam_refs, "Invalid response")
-                ref_name = self.manager.beam_refs[ref_num - 1]
-                analysis_name = input("Enter Analysis Name:\n")
-                self.manager.analyze_beam_ref(name = ref_name)
-            if a_type == 2:
-                pass
+        if self.analysis_response == 1: #If we want to analyze a beam reference
+            msg = "Select Ref file:\n"
+            valid_beam_refs = []
+            for i, ref_name in enumerate(self.manager.beam_refs):
+                msg += f" ({i+1}) {ref_name}"
+                valid_beam_refs.append(i + 1)
+            ref_num = get_response(msg, valid_beam_refs, "Invalid response")
+            ref_name = self.manager.beam_refs[ref_num - 1]
+            self.manager.analyze_beam_ref(name = ref_name)
 
         
     

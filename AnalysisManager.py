@@ -252,6 +252,10 @@ class AM2:
         aligner.initialize_plot()
         aligner.show_plot()
 
+    def get_ref(self, shot_name):
+        #given a shot name, get the associated ref
+        pass
+
     def get_shot_ref_analyses(self, name):
         """
         Given an img name, this returns a list
