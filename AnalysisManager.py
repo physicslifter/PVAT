@@ -7,7 +7,7 @@ import pandas as pd
 from InteractivePlots import BeamAligner
 import shutil
 import re
-
+#I'm unhappy with this space
 
 class SingleShotAnalysis:
     """
