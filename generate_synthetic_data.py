@@ -33,8 +33,11 @@ synthetic.generate_fringes(num_fringes = 10,
 synthetic.generate_fiducial(time_loc = 5, space_loc = 465, amp = 2000, width = 4, height = 10)
 synthetic_shot_ref_img = VISARImage(fname = None, data = synthetic.data, sweep_speed = synthetic.sweep_speed, slit_size = synthetic.slit_size)
 synthetic_shot_ref_img.apply_correction(ref.correction, negative = True)
-synthetic_shot_ref_img.save_tif("SyntheticData/20nsShotReference.tif")
+synthetic_shot_ref_img.shear_data(1.3)
 synthetic_shot_ref_img.chop_by_time(1.65, 20)
+synthetic_shot_ref_img.chop_by_space(22, 500)
+synthetic_shot_ref_img.chop_by_time(1.65, 20)
+synthetic_shot_ref_img.save_tif("SyntheticData/20nsShotReference.tif")
 
 #Generate Shot data
 synthetic = SyntheticShot(sweep_speed = 20, slit_size = 500, time_points = 1000, space_points = 500)
@@ -49,9 +52,12 @@ synthetic.generate_fringes(num_fringes = 10,
 synthetic.generate_fiducial(time_loc = 5, space_loc = 465, amp = 2000, width = 4, height = 10)
 synthetic_shot_img = VISARImage(fname = None, data = synthetic.data, sweep_speed = synthetic.sweep_speed, slit_size = synthetic.slit_size)
 synthetic_shot_img.apply_correction(ref.correction, negative = True)
+synthetic_shot_img.shear_data(1.3)
 #chop data to remove 0s added in from the correction
 synthetic_shot_img.chop_by_time(1.65, 20)
+synthetic_shot_img.chop_by_space(22, 500)
 synthetic_shot_img.save_tif("SyntheticData/20nsShot.tif")
+
 
 #show the synthetic images
 fig = plt.figure(figsize = (12, 5))

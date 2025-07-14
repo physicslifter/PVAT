@@ -205,6 +205,15 @@ class VISARImage:
         self.data = self.data[:, min_index:max_index]
         self.time = self.time[min_index:max_index]
 
+    def chop_by_space(self, min_space, max_space):
+        """
+        removes data before min_space and after max_space
+        """
+        min_index = int(min_space/self.space_per_pixel)
+        max_index = int(max_space/self.space_per_pixel)
+        self.data = self.data[min_index:max_index]
+        self.space = self.space[min_index:max_index]
+
     def shear_data(self, angle):
         """
         Given an angle, perform the associated horizontal shear
