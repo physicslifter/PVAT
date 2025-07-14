@@ -8,6 +8,7 @@ from InteractivePlots import BeamAligner
 import shutil
 import re
 
+
 class SingleShotAnalysis:
     """
     Class for managing a single analysis
