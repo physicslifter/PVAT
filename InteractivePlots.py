@@ -9,6 +9,9 @@ import matplotlib.patheffects as pe
 import pandas as pd
 import numpy as np
 from scipy import ndimage
+from scipy.fft import rfft, ifft, rfftfreq
+
+plt.style.use(["fast"]) #fast plotting
 
 class BeamAligner:
     """
@@ -610,27 +613,31 @@ class AnalysisPlot:
     def __init__(self, shot_folder):
         self.shot_folder = shot_folder
         self.open_shot()
+        self.showing_visar = False
+        self.showing_phase_region = False
+        self.has_fft_lineout = False
 
     def open_shot(self):
         if not os.path.exists(self.shot_folder):
             raise Exception("Folder path not valid")
         
-        self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
-        self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
-        ref_folder = self.info["shot_ref"].values[0]
-        beam_folder = self.info["beam_ref"].values[0]
-        fname = self.info["fname"].values[0]
-        sweep_speed = self.info["sweep_speed"].values[0]
-        slit_size = self.info["slit_size"].values[0]
-        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
-        shear_angle = ref_info["shear"].values[0]
-        correction = ImageCorrection(f"{beam_folder}/correction.csv")
-        self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
-        self.img.apply_correction(correction) #apply beam correction
-        self.img.shear_data(shear_angle) #apply shear from shot ref
-        self.img.align_time(self.time.time)
-        
-        #    raise Exception("Shot folder could not be read")
+        try:
+            self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
+            self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
+            ref_folder = self.info["shot_ref"].values[0]
+            beam_folder = self.info["beam_ref"].values[0]
+            fname = self.info["fname"].values[0]
+            sweep_speed = self.info["sweep_speed"].values[0]
+            slit_size = self.info["slit_size"].values[0]
+            ref_info = pd.read_csv(f"{ref_folder}/info.csv")
+            shear_angle = ref_info["shear"].values[0]
+            correction = ImageCorrection(f"{beam_folder}/correction.csv")
+            self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
+            self.img.apply_correction(correction) #apply beam correction
+            self.img.shear_data(shear_angle) #apply shear from shot ref
+            self.img.align_time(self.time.time)
+        except:
+            raise Exception("Shot folder could not be read")
         
     def initialize_plot(self):
         self.name = f"{self.img.fname.split('/')[-1].lower().replace('.tif', '')}"
@@ -649,12 +656,16 @@ class AnalysisPlot:
         self.fig.text(0.77, 0.47, "Filtering", size = "medium", weight = "bold")
 
         #phase region sliders
+        min_time = (self.img.time.max() - self.img.time.min())*0.2 + self.img.time.min()
+        max_time = (self.img.time.max() - self.img.time.min())*0.8 + self.img.time.min()
+        min_space = (self.img.space.max() - self.img.space.min())*0.2 + self.img.space.min()
+        max_space = (self.img.space.max() - self.img.space.min())*0.8 + self.img.space.min()
         self.x_slider_ax = self.fig.add_axes([0.16, 0.42, 0.2, 0.03])
-        self.x_slider = RangeSlider(self.x_slider_ax, "x bounds", self.img.space.min(), self.img.space.max())
+        self.x_slider = RangeSlider(self.x_slider_ax, "x bounds", self.img.time.min(), self.img.time.max(), valinit = [min_time, max_time])
         self.y_slider_ax = self.fig.add_axes([0.16, 0.39, 0.2, 0.03])
-        self.y_slider = RangeSlider(self.y_slider_ax, "y bounds", self.img.space.min(), self.img.space.max())
+        self.y_slider = RangeSlider(self.y_slider_ax, "y bounds", self.img.space.min(), self.img.space.max(), valinit = [min_space, max_space])
         self.ref_slider_ax = self.fig.add_axes([0.16, 0.36, 0.2, 0.03])
-        self.ref_slider = RangeSlider(self.ref_slider_ax, "Ref Bounds", self.img.space.min(), self.img.space.max())
+        self.ref_slider = RangeSlider(self.ref_slider_ax, "Ref Bounds", min_time, max_time, valinit = [min_time, min_time + self.img.time_resolution*30])
 
         #fft slider
         self.fft_slider_ax = self.fig.add_axes([0.16, 0.29, 0.2, 0.03])
@@ -682,8 +693,78 @@ class AnalysisPlot:
         self.fourier_lineout_ax.set_title("Fourier Transform")
         self.velocity_lineout_ax.set_title("Velocity")
 
-        self.img.show_data(self.img_ax, xlabel = 1)
+    def show_visar(self):
+        self.img.show_data(self.img_ax)
+        self.showing_visar = True
+
+    def show_phase_region(self):
+        #Get bounds from the phase lineouts
+        self.min_x = self.img_ax.plot([self.x_slider.val[0], self.x_slider.val[0]], [self.y_slider.val[0], self.y_slider.val[1]], color = "k")
+        self.max_x = self.img_ax.plot([self.x_slider.val[1], self.x_slider.val[1]], [self.y_slider.val[0], self.y_slider.val[1]], color = "k")
+        self.min_y = self.img_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.y_slider.val[0], self.y_slider.val[0]], color = "k")
+        self.max_y = self.img_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.y_slider.val[1], self.y_slider.val[1]], color = "k")
+        self.min_ref = self.img_ax.plot([self.x_slider.val[0], self.x_slider.val[0]], [self.y_slider.val[0], self.y_slider.val[1]], color = "lime")
+        self.max_ref = self.img_ax.plot([self.ref_slider.val[1], self.ref_slider.val[1]], [self.y_slider.val[0], self.y_slider.val[1]], color = "lime")
+        print(f"=====\n=====\n{self.y_slider.val}")
+        self.showing_phase_region = True
+
+    def update_x_slider(self, val):
+        #update lines
+        self.min_x[0].set_xdata([val[0], val[0]])
+        self.max_x[0].set_xdata([val[1], val[1]])
+        self.min_y[0].set_xdata([val[0], val[1]])
+        self.max_y[0].set_xdata([val[0], val[1]])
+        #update bounds on ref slider
+        self.ref_slider.valmin = val[0]
+        self.ref_slider.valmax = val[1]
+        self.ref_slider_ax.set_xlim(val[0], val[1])
+        if self.ref_slider.val[0] < val[0]:
+            self.ref_slider.set_val([val[0], self.ref_slider.val[1]])
+        if self.ref_slider.val[1] > val[1]:
+            self.ref_slider.set_val([self.ref_slider.val[0], val[1]])
+        self.fig.canvas.draw_idle()
+
+    def update_y_slider(self, val):
+        self.min_x[0].set_ydata([val[0], val[1]])
+        self.max_x[0].set_ydata([val[0], val[1]])
+        self.min_y[0].set_ydata([val[0], val[0]])
+        self.max_y[0].set_ydata([val[1], val[1]])
+        self.min_ref[0].set_ydata([val[0], val[1]])
+        self.max_ref[0].set_ydata([val[0], val[1]])
+        self.fig.canvas.draw_idle()
+
+    def update_ref_slider(self, val):
+        self.min_ref[0].set_xdata([val[0], val[0]])
+        self.max_ref[0].set_xdata([val[1], val[1]])
+        self.fig.canvas.draw_idle()
+
+    def click_fft_button(self, val):
+        ref_lineout = self.img.take_vert_lineout(self.ref_slider.val[0], self.ref_slider.val[1])
+        fft_data = rfft(ref_lineout)
+        freq = rfftfreq(len(ref_lineout))
+        if self.has_fft_lineout == False:
+            self.fft = self.fourier_lineout_ax.plot(freq, fft_data)
+            #set fft slider bounds
+            self.fft_slider.xmin = min(freq)
+            self.fft_slider.xmax = max(freq)
+            self.fft_slider.set_val(((max(freq) - min(freq))*0.2 + min(freq), (max(freq) - min(freq))*0.8 + min(freq)))
+        else:
+            self.fft[0].set_data(freq, fft_data)
+
+    def set_sliders(self):
+        self.x_slider.on_changed(self.update_x_slider)
+        self.y_slider.on_changed(self.update_y_slider)
+        self.ref_slider.on_changed(self.update_ref_slider)
+
+    def set_buttons(self):
+        self.fft_button.on_clicked(self.click_fft_button)
 
     def show_plot(self):
+        if self.showing_visar == False:
+            self.show_visar()
+        if self.showing_phase_region == False:
+            self.show_phase_region()
+        self.set_sliders()
+        self.set_buttons()
         plt.tight_layout()
         plt.show()

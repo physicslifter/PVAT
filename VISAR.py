@@ -219,6 +219,14 @@ class VISARImage:
         self.data = self.data[min_index:max_index]
         self.space = self.space[min_index:max_index]
 
+    def take_vert_lineout(self, min_time, max_time):
+        """
+        Get a vertical lineout on the image
+        """
+        minval = int(min_time/self.space_per_pixel)
+        maxval = int(max_time/self.space_per_pixel)
+        return self.data[:, minval:maxval].mean(axis = 1)
+
     def shear_data(self, angle):
         """
         Given an angle, perform the associated horizontal shear
