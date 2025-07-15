@@ -575,7 +575,11 @@ class ShotAligner:
     def click_save_time_calibration(self, val):
         df = pd.DataFrame({"time":self.img.time})
         df.to_csv(f"{self.folder}/time.csv")
-        info = pd.DataFrame({"beam_ref":[self.beam_ref], "shot_ref": [self.shot_ref]})
+        info = pd.DataFrame({"beam_ref":[self.beam_ref], 
+                             "shot_ref": [self.shot_ref], 
+                             "fname": [self.img.fname],
+                             "sweep_speed": [self.img.sweep_speed],
+                             "slit_size": [self.img.slit_size]})
         info.to_csv(f"{self.folder}/info.csv")
 
     def set_sliders(self):
@@ -604,4 +608,82 @@ class AnalysisPlot:
     Class for performing the actual analysis once everything has been calibrated
     """
     def __init__(self, shot_folder):
-        pass
+        self.shot_folder = shot_folder
+        self.open_shot()
+
+    def open_shot(self):
+        if not os.path.exists(self.shot_folder):
+            raise Exception("Folder path not valid")
+        
+        self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
+        self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
+        ref_folder = self.info["shot_ref"].values[0]
+        beam_folder = self.info["beam_ref"].values[0]
+        fname = self.info["fname"].values[0]
+        sweep_speed = self.info["sweep_speed"].values[0]
+        slit_size = self.info["slit_size"].values[0]
+        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
+        shear_angle = ref_info["shear"].values[0]
+        correction = ImageCorrection(f"{beam_folder}/correction.csv")
+        self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
+        self.img.apply_correction(correction) #apply beam correction
+        self.img.shear_data(shear_angle) #apply shear from shot ref
+        self.img.align_time(self.time.time)
+        
+        #    raise Exception("Shot folder could not be read")
+        
+    def initialize_plot(self):
+        self.name = f"{self.img.fname.split('/')[-1].lower().replace('.tif', '')}"
+        gs = GridSpec(3, 2, width_ratios = [1, 1], height_ratios = [5, 2, 2])
+        self.fig = plt.figure(figsize = (8, 8))
+
+        self.img_ax = self.fig.add_subplot(gs[0])
+        self.phase_ax = self.fig.add_subplot(gs[1])
+        self.fourier_lineout_ax = self.fig.add_subplot(gs[4])
+        self.velocity_lineout_ax = self.fig.add_subplot(gs[5])
+        #self.fig.subplots_adjust(bottom = 0.3)
+
+        #Label sections
+        self.fig.text(0.12, 0.46, "Phase Region", size = "medium", weight = "bold")
+        self.fig.text(0.12, 0.33, "Fourier Controls", size = "medium", weight = "bold")
+        self.fig.text(0.77, 0.47, "Filtering", size = "medium", weight = "bold")
+
+        #phase region sliders
+        self.x_slider_ax = self.fig.add_axes([0.16, 0.42, 0.2, 0.03])
+        self.x_slider = RangeSlider(self.x_slider_ax, "x bounds", self.img.space.min(), self.img.space.max())
+        self.y_slider_ax = self.fig.add_axes([0.16, 0.39, 0.2, 0.03])
+        self.y_slider = RangeSlider(self.y_slider_ax, "y bounds", self.img.space.min(), self.img.space.max())
+        self.ref_slider_ax = self.fig.add_axes([0.16, 0.36, 0.2, 0.03])
+        self.ref_slider = RangeSlider(self.ref_slider_ax, "Ref Bounds", self.img.space.min(), self.img.space.max())
+
+        #fft slider
+        self.fft_slider_ax = self.fig.add_axes([0.16, 0.29, 0.2, 0.03])
+        self.fft_slider = RangeSlider(self.fft_slider_ax, "Filter", 0, 1)
+        
+        #fft buttons
+        self.fft_button_ax = self.fig.add_axes([0.1, 0.255, 0.09, 0.03])
+        self.fft_button = Button(self.fft_button_ax, label = "Get FFT")
+        self.filter_button_ax = self.fig.add_axes([0.23, 0.255, 0.09, 0.03])
+        self.filter_button = Button(self.filter_button_ax, label = "Filter")
+
+        #phase buttons
+        self.get_phase_button_ax = self.fig.add_axes([0.58, 0.4, 0.1, 0.05])
+        self.get_phase_button = Button(self.get_phase_button_ax, "Get Phase")
+        self.get_phase_button_ax = self.fig.add_axes([0.58, 0.34, 0.1, 0.05])
+        self.get_phase_button = Button(self.get_phase_button_ax, "Save", color = "salmon")
+
+        #velocity slider
+        self.velo_slider_ax = self.fig.add_axes([0.62, 0.27, 0.25, 0.03])
+        self.velo_slider = RangeSlider(self.velo_slider_ax, "Lineout\n Bounds", 0, 1)
+
+        #title axes
+        self.img_ax.set_title("Calibrated Image")
+        self.phase_ax.set_title("Phase")
+        self.fourier_lineout_ax.set_title("Fourier Transform")
+        self.velocity_lineout_ax.set_title("Velocity")
+
+        self.img.show_data(self.img_ax, xlabel = 1)
+
+    def show_plot(self):
+        plt.tight_layout()
+        plt.show()
