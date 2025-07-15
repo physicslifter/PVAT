@@ -50,6 +50,9 @@ class ImageCorrection:
             data = pd.read_csv(fname)
             self.space = data.space
             self.time_shift = data.time_shift
+            self.spacing = self.space[1] - self.space[0]
+            self.maxes = np.array(self.space)
+            self.mins = self.maxes + self.spacing
         except:
             raise Exception("File {fname} couldn't be found or was stored in incorrect format")
 
@@ -116,7 +119,7 @@ class VISARImage:
             self.data = self.data
 
     def align_time(self, time=None):
-        if time != None:
+        if type(time) != type(None):
             self.time = time
         else:
             self.time = np.linspace(0, self.sweep_speed, self.data.shape[1])
@@ -166,7 +169,7 @@ class VISARImage:
             raise Exception("Data not yet plotted")
         self.visar_mesh.set_clim(vmin = vmin, vmax = vmax)
 
-    def show_data(self, ax, minmax=(300, 4000)):
+    def show_data(self, ax, minmax=(300, 4000), xlabel:bool = True, ylabel:bool = True):
         if self.has_data == False:
             self.get_data()
         if self.time_aligned == False:
@@ -179,8 +182,10 @@ class VISARImage:
         self.vmax = vmax
         X, Y = np.meshgrid(self.time, self.space)
         self.visar_mesh = ax.pcolormesh(X, Y, data, norm = colors.LogNorm(vmin=vmin,vmax=vmax, clip=True), cmap='magma')
-        ax.set_xlabel("Time (ns)")
-        ax.set_ylabel("Dist from slit bottom (um)")
+        if xlabel == True:
+            ax.set_xlabel("Time (ns)")
+        if ylabel == True:
+            ax.set_ylabel("Dist from slit bottom (um)")
         self.plotted = True
 
     def save_tif(self, save_name):
@@ -340,7 +345,7 @@ class RefImage:
     def show_raw_visar(self, minmax = None):
         fig = plt.subplots()
         ax = fig.add_subplot(1, 1, 1)
-        if minmax == None:
+        if minmax != None:
             self.img.show_data(ax, minmax)
         
     def chop_beam(self, ybounds, num_slices):

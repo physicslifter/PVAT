@@ -8,6 +8,7 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.patheffects as pe
 import pandas as pd
 import numpy as np
+from scipy import ndimage
 
 class BeamAligner:
     """
@@ -22,6 +23,9 @@ class BeamAligner:
         self.has_chop = False
         self.correction_save_name = None
         self.timing_save_name = None
+        #self.ref.img.data = ndimage.uniform_filter(self.ref.img.data, size = (int(len(self.ref.img.space)/50), int(len(self.ref.img.time)/50)))
+        #self.ref.img.data = ndimage.minimum_filter(self.ref.img.data, size = (int(len(self.ref.img.space)/50), int(len(self.ref.img.time)/50)))
+        #self.ref.img.data[self.ref.img.data < np.median(self.ref.img.data)/2] = 0.01
 
     def initialize_plot(self):
         """
@@ -232,9 +236,9 @@ class BeamAligner:
         plt.show()
 
 
-class ShotAligner:
+class ShotRefAligner:
     """
-    Class for aligning a shot
+    Class for aligning a shot ref
     """
     def __init__(self, img:VISARImage):
         self.img = img
@@ -242,8 +246,11 @@ class ShotAligner:
         self.showing_visar = False
         self.showing_lineout = False
         self.beam_ref = ""
+        self.folder = ""
         self.has_shear_line = False
         self.sheared_angle = 0
+        self.has_ref_lineout = 0
+        self.beam_calibration_applied = False
 
     def initialize_plot(self):
         self.fig = plt.figure(figsize = (10, 8))
@@ -274,12 +281,10 @@ class ShotAligner:
         #create shearing button axes
         self.add_shear_button_ax = self.fig.add_axes([0.72, 0.5, 0.14, 0.07])
         self.shear_button_ax = self.fig.add_axes([0.72, 0.4, 0.14, 0.07])
-        self.save_shear_button_ax = self.fig.add_axes([0.72, 0.3, 0.14, 0.07])
 
         #create shearing buttons
         self.add_shear_button = Button(self.add_shear_button_ax, label = "Add Shear")
         self.shear_button = Button(self.shear_button_ax, label = "Shear")
-        self.save_shear_button = Button(self.save_shear_button_ax, label = "Save Shear")
 
         #create shear slider
         self.shear_slider_ax = self.fig.add_axes([0.9, 0.3, 0.03, 0.25])
@@ -290,7 +295,7 @@ class ShotAligner:
         self.time_shift_slider_ax = self.fig.add_axes([0.15, 0.06, 0.45, 0.03])
         self.fiducial_slider_ax = self.fig.add_axes([0.15, 0.02, 0.45, 0.03])
         self.colormap_slider = RangeSlider(self.colormap_slider_ax, "Heatmap\nThreshold", self.img.data.min(), self.img.data.max())
-        self.time_shift_slider = Slider(self.time_shift_slider_ax, "Start Time", -5, 5, valinit = 0)
+        self.time_shift_slider = Slider(self.time_shift_slider_ax, "Time Shift", -self.img.sweep_speed/2, self.img.sweep_speed/2, valinit = 0)
         self.fiducial_slider = RangeSlider(self.fiducial_slider_ax, "Fiducial Bounds", valmin = self.img.space.min(), valmax = self.img.space.max())
 
         #timing buttons
@@ -312,7 +317,7 @@ class ShotAligner:
         self.fiducial_lower = self.img_ax.axhline([self.fiducial_slider.val[0]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime", label = "Fiducial Bounds")
         self.fiducial_upper = self.img_ax.axhline([self.fiducial_slider.val[1]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime")
         fiducial_lineout = self.img.take_lineout(min = self.fiducial_slider.val[0], max = self.fiducial_slider.val[1])
-        self.fiducial_lineout = self.lineout_ax.plot(self.img.time, fiducial_lineout)[0]
+        self.fiducial_lineout = self.lineout_ax.plot(self.img.time, fiducial_lineout/fiducial_lineout.max(), label = "Fiducial")[0]
         self.showing_lineout = True
 
     def update_fiducial_bounds(self, val):
@@ -320,11 +325,16 @@ class ShotAligner:
         self.fiducial_lower.set_ydata([vmin, vmin])
         self.fiducial_upper.set_ydata([vmax, vmax])
         fiducial_lineout = self.img.take_lineout(vmin, vmax)
-        self.fiducial_lineout.set_ydata(fiducial_lineout)
-        self.lineout_ax.set_ylim(fiducial_lineout.min(), fiducial_lineout.max())
+        self.fiducial_lineout.set_xdata(self.img.time)
+        self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.lineout_ax.set_ylim(0, 1)
 
     def set_ref_folder(self, folder):
         self.beam_ref = folder
+
+    def set_folder(self, folder):
+        #sets the save folder for the analysis
+        self.folder = folder
 
     def plot_visar(self):
         self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
@@ -333,6 +343,33 @@ class ShotAligner:
     def update_colormap_slider(self, val):
         self.img.update_heatmap_threshold(vmin = val[0], vmax = val[1])
         self.fig.canvas.draw_idle()
+
+    def update_time_shift_slider(self, val):
+        fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        self.fiducial_lineout.set_xdata(self.img.time - val)
+        self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.fig.canvas.draw_idle()
+
+    def click_get_ref_lineout(self, val):
+        if self.has_ref_lineout == False: #do nothing if we already have the lineout
+            if self.beam_ref != "": #If a beam ref has been passed in
+                try:
+                    ref_data = pd.read_csv(f"{self.beam_ref}/lineouts.csv")
+                except:
+                    raise Exception("Ref data not found")
+            self.lineout_ax.plot(ref_data.time, ref_data.beam, label = "Reference Beam")
+            self.lineout_ax.plot(ref_data.time, ref_data.fiducial, label = "Reference Fiducial")
+            self.lineout_ax.legend()
+            self.has_ref_lineout = True
+            self.fig.canvas.draw_idle()
+
+    def click_apply_beam_calibration(self, val):
+        if self.beam_calibration_applied == False:
+            calibration = ImageCorrection(f"{self.beam_ref}/correction.csv")
+            self.img.apply_correction(calibration)
+            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+            self.fig.canvas.draw_idle()
+        self.beam_calibration_applied = True
 
     def click_add_shear(self, val):
         """
@@ -355,14 +392,35 @@ class ShotAligner:
             self.shear_line[0].set_ydata(np.tan(np.radians(self.shear_slider.val))*np.arange(len(self.img.time))*self.img.space_per_pixel+ (self.img.space.max() - self.img.space.min())/2)
         self.fig.canvas.draw_idle()
 
+    def click_center_time(self, val):
+        self.img.set_time_to_zero(self.time_shift_slider.val)
+        self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        self.fiducial_lineout.set_xdata(self.img.time)
+        self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.img_ax.set_xlim(self.img.time.min(), self.img.time.max())
+        self.img_ax.set_ylim(self.img.space.min(), self.img.space.max())
+        self.fig.canvas.draw_idle()
+
+    def click_save_time_calibration(self, val):
+        df = pd.DataFrame({"time":self.img.time})
+        df.to_csv(f"{self.folder}/time.csv")
+        info = pd.DataFrame({"beam_ref":[self.beam_ref], "shear": [self.sheared_angle]})
+        info.to_csv(f"{self.folder}/info.csv")
+
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
         self.fiducial_slider.on_changed(self.update_fiducial_bounds)
         self.shear_slider.on_changed(self.update_shear_slider)
+        self.time_shift_slider.on_changed(self.update_time_shift_slider)
 
     def set_buttons(self):
         self.add_shear_button.on_clicked(self.click_add_shear)
         self.shear_button.on_clicked(self.click_shear)
+        self.beam_calibration_lineout_button.on_clicked(self.click_get_ref_lineout)
+        self.beam_calibration_button.on_clicked(self.click_apply_beam_calibration)
+        self.center_time_button.on_clicked(self.click_center_time)
+        self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
 
     def show_plot(self):
         if self.showing_visar == False:
@@ -371,4 +429,261 @@ class ShotAligner:
             self.plot_initial_lineouts()
         self.set_sliders()
         self.set_buttons()
+        plt.show()
+
+class ShotAligner:
+    """
+    Class for aligning a shot ref
+    """
+    def __init__(self, img:VISARImage):
+        self.img = img
+        self.name = f"{img.fname.split('/')[-1].lower().replace('.tif', '')}"
+        self.showing_visar = False
+        self.showing_lineout = False
+        self.beam_ref = ""
+        self.folder = ""
+        self.shot_ref = ""
+        self.has_shear_line = False
+        self.sheared_angle = 0
+        self.has_ref_lineout = 0
+        self.beam_calibration_applied = False
+
+    def initialize_plot(self):
+        self.fig = plt.figure(figsize = (10, 8))
+        gs = GridSpec(3, 1, figure = self.fig)
+
+        #create axes
+        self.img_ax = self.fig.add_subplot(gs[:2, 0])
+        self.img_ax.set_title(f"Time & Space Calibration: {self.name}")
+        self.lineout_ax = self.fig.add_subplot(gs[2,0])
+        plt.setp(self.img_ax.get_xticklabels(), visible=False)
+
+        #Label timing sections
+        self.fig.text(0.85, 0.55, "Shearing", size = "large", weight = "bold")
+        self.fig.text(0.85, 0.35, "Timing", size = "large", weight = "bold")
+        self.fig.text(0.85, 0.81, "Beam\nReference", size = "large", weight = "bold")
+
+        #create room for buttons
+        self.fig.subplots_adjust(right = 0.8, bottom = 0.2)
+
+        #create shearing button axes
+        self.shear_button_ax = self.fig.add_axes([0.82, 0.46, 0.14, 0.07])
+
+        #create shearing buttons
+        self.shear_button = Button(self.shear_button_ax, label = "Do Shear\nFrom Ref")
+
+        #bottom sliders
+        self.colormap_slider_ax = self.fig.add_axes([0.15, 0.1, 0.45, 0.03])
+        self.time_shift_slider_ax = self.fig.add_axes([0.15, 0.06, 0.45, 0.03])
+        self.fiducial_slider_ax = self.fig.add_axes([0.15, 0.02, 0.45, 0.03])
+        self.colormap_slider = RangeSlider(self.colormap_slider_ax, "Heatmap\nThreshold", self.img.data.min(), self.img.data.max())
+        self.time_shift_slider = Slider(self.time_shift_slider_ax, "Time Shift", -self.img.sweep_speed/2, self.img.sweep_speed/2, valinit = 0)
+        self.fiducial_slider = RangeSlider(self.fiducial_slider_ax, "Fiducial Bounds", valmin = self.img.space.min(), valmax = self.img.space.max())
+
+        #timing buttons
+        self.save_time_calibration_ax = self.fig.add_axes([0.82, 0.15, 0.14 ,0.07])
+        self.center_time_ax = self.fig.add_axes([0.82, 0.25, 0.14,0.07])
+        self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
+        self.center_time_button = Button(self.center_time_ax, "Center Time")
+
+        #Beam Calibration Buttons
+        self.beam_calibration_button_ax = self.fig.add_axes([0.82, 0.73, 0.14, 0.07])
+        self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.82, 0.64, 0.14, 0.07])
+        self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
+        self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+
+    def plot_initial_lineouts(self):
+        """
+        Plots lineouts and fiducial bounds
+        """
+        self.fiducial_lower = self.img_ax.axhline([self.fiducial_slider.val[0]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime", label = "Fiducial Bounds")
+        self.fiducial_upper = self.img_ax.axhline([self.fiducial_slider.val[1]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime")
+        fiducial_lineout = self.img.take_lineout(min = self.fiducial_slider.val[0], max = self.fiducial_slider.val[1])
+        self.fiducial_lineout = self.lineout_ax.plot(self.img.time, fiducial_lineout/fiducial_lineout.max(), label = "Fiducial")[0]
+        self.showing_lineout = True
+
+    def update_fiducial_bounds(self, val):
+        vmin, vmax = val
+        self.fiducial_lower.set_ydata([vmin, vmin])
+        self.fiducial_upper.set_ydata([vmax, vmax])
+        fiducial_lineout = self.img.take_lineout(vmin, vmax)
+        self.fiducial_lineout.set_xdata(self.img.time)
+        self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.lineout_ax.set_ylim(0, 1)
+
+    def set_beam_ref_folder(self, folder):
+        self.beam_ref = folder
+
+    def set_shot_ref_folder(self, folder):
+        self.shot_ref = folder
+
+    def set_folder(self, folder):
+        #sets the save folder for the analysis
+        self.folder = folder
+
+    def plot_visar(self):
+        self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.showing_visar = True
+
+    def update_colormap_slider(self, val):
+        self.img.update_heatmap_threshold(vmin = val[0], vmax = val[1])
+        self.fig.canvas.draw_idle()
+
+    def update_time_shift_slider(self, val):
+        fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        self.fiducial_lineout.set_xdata(self.img.time - val)
+        self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.fig.canvas.draw_idle()
+
+    def click_get_ref_lineout(self, val):
+        if self.has_ref_lineout == False: #do nothing if we already have the lineout
+            if self.beam_ref != "": #If a beam ref has been passed in
+                try:
+                    ref_data = pd.read_csv(f"{self.beam_ref}/lineouts.csv")
+                except:
+                    raise Exception("Ref data not found")
+            self.lineout_ax.plot(ref_data.time, ref_data.beam, label = "Reference Beam")
+            self.lineout_ax.plot(ref_data.time, ref_data.fiducial, label = "Reference Fiducial")
+            self.lineout_ax.legend()
+            self.has_ref_lineout = True
+            self.fig.canvas.draw_idle()
+
+    def click_apply_beam_calibration(self, val):
+        if self.beam_calibration_applied == False:
+            calibration = ImageCorrection(f"{self.beam_ref}/correction.csv")
+            self.img.apply_correction(calibration)
+            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+            self.fig.canvas.draw_idle()
+        self.beam_calibration_applied = True
+
+    def click_shear(self, val):
+        info = pd.read_csv(f"{self.shot_ref}/info.csv")
+        self.img.shear_data(angle = info["shear"].values[0])
+        self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.fig.canvas.draw_idle()
+
+    def click_center_time(self, val):
+        self.img.set_time_to_zero(self.time_shift_slider.val)
+        self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        self.fiducial_lineout.set_xdata(self.img.time)
+        self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.img_ax.set_xlim(self.img.time.min(), self.img.time.max())
+        self.img_ax.set_ylim(self.img.space.min(), self.img.space.max())
+        self.fig.canvas.draw_idle()
+
+    def click_save_time_calibration(self, val):
+        df = pd.DataFrame({"time":self.img.time})
+        df.to_csv(f"{self.folder}/time.csv")
+        info = pd.DataFrame({"beam_ref":[self.beam_ref], 
+                             "shot_ref": [self.shot_ref], 
+                             "fname": [self.img.fname],
+                             "sweep_speed": [self.img.sweep_speed],
+                             "slit_size": [self.img.slit_size]})
+        info.to_csv(f"{self.folder}/info.csv")
+
+    def set_sliders(self):
+        self.colormap_slider.on_changed(self.update_colormap_slider)
+        self.fiducial_slider.on_changed(self.update_fiducial_bounds)
+        self.time_shift_slider.on_changed(self.update_time_shift_slider)
+
+    def set_buttons(self):
+        self.shear_button.on_clicked(self.click_shear)
+        self.beam_calibration_lineout_button.on_clicked(self.click_get_ref_lineout)
+        self.beam_calibration_button.on_clicked(self.click_apply_beam_calibration)
+        self.center_time_button.on_clicked(self.click_center_time)
+        self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
+
+    def show_plot(self):
+        if self.showing_visar == False:
+            self.plot_visar()
+        if self.showing_lineout == False:
+            self.plot_initial_lineouts()
+        self.set_sliders()
+        self.set_buttons()
+        plt.show()
+
+class AnalysisPlot:
+    """
+    Class for performing the actual analysis once everything has been calibrated
+    """
+    def __init__(self, shot_folder):
+        self.shot_folder = shot_folder
+        self.open_shot()
+
+    def open_shot(self):
+        if not os.path.exists(self.shot_folder):
+            raise Exception("Folder path not valid")
+        
+        self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
+        self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
+        ref_folder = self.info["shot_ref"].values[0]
+        beam_folder = self.info["beam_ref"].values[0]
+        fname = self.info["fname"].values[0]
+        sweep_speed = self.info["sweep_speed"].values[0]
+        slit_size = self.info["slit_size"].values[0]
+        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
+        shear_angle = ref_info["shear"].values[0]
+        correction = ImageCorrection(f"{beam_folder}/correction.csv")
+        self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
+        self.img.apply_correction(correction) #apply beam correction
+        self.img.shear_data(shear_angle) #apply shear from shot ref
+        self.img.align_time(self.time.time)
+        
+        #    raise Exception("Shot folder could not be read")
+        
+    def initialize_plot(self):
+        self.name = f"{self.img.fname.split('/')[-1].lower().replace('.tif', '')}"
+        gs = GridSpec(3, 2, width_ratios = [1, 1], height_ratios = [5, 2, 2])
+        self.fig = plt.figure(figsize = (8, 8))
+
+        self.img_ax = self.fig.add_subplot(gs[0])
+        self.phase_ax = self.fig.add_subplot(gs[1])
+        self.fourier_lineout_ax = self.fig.add_subplot(gs[4])
+        self.velocity_lineout_ax = self.fig.add_subplot(gs[5])
+        #self.fig.subplots_adjust(bottom = 0.3)
+
+        #Label sections
+        self.fig.text(0.12, 0.46, "Phase Region", size = "medium", weight = "bold")
+        self.fig.text(0.12, 0.33, "Fourier Controls", size = "medium", weight = "bold")
+        self.fig.text(0.77, 0.47, "Filtering", size = "medium", weight = "bold")
+
+        #phase region sliders
+        self.x_slider_ax = self.fig.add_axes([0.16, 0.42, 0.2, 0.03])
+        self.x_slider = RangeSlider(self.x_slider_ax, "x bounds", self.img.space.min(), self.img.space.max())
+        self.y_slider_ax = self.fig.add_axes([0.16, 0.39, 0.2, 0.03])
+        self.y_slider = RangeSlider(self.y_slider_ax, "y bounds", self.img.space.min(), self.img.space.max())
+        self.ref_slider_ax = self.fig.add_axes([0.16, 0.36, 0.2, 0.03])
+        self.ref_slider = RangeSlider(self.ref_slider_ax, "Ref Bounds", self.img.space.min(), self.img.space.max())
+
+        #fft slider
+        self.fft_slider_ax = self.fig.add_axes([0.16, 0.29, 0.2, 0.03])
+        self.fft_slider = RangeSlider(self.fft_slider_ax, "Filter", 0, 1)
+        
+        #fft buttons
+        self.fft_button_ax = self.fig.add_axes([0.1, 0.255, 0.09, 0.03])
+        self.fft_button = Button(self.fft_button_ax, label = "Get FFT")
+        self.filter_button_ax = self.fig.add_axes([0.23, 0.255, 0.09, 0.03])
+        self.filter_button = Button(self.filter_button_ax, label = "Filter")
+
+        #phase buttons
+        self.get_phase_button_ax = self.fig.add_axes([0.58, 0.4, 0.1, 0.05])
+        self.get_phase_button = Button(self.get_phase_button_ax, "Get Phase")
+        self.get_phase_button_ax = self.fig.add_axes([0.58, 0.34, 0.1, 0.05])
+        self.get_phase_button = Button(self.get_phase_button_ax, "Save", color = "salmon")
+
+        #velocity slider
+        self.velo_slider_ax = self.fig.add_axes([0.62, 0.27, 0.25, 0.03])
+        self.velo_slider = RangeSlider(self.velo_slider_ax, "Lineout\n Bounds", 0, 1)
+
+        #title axes
+        self.img_ax.set_title("Calibrated Image")
+        self.phase_ax.set_title("Phase")
+        self.fourier_lineout_ax.set_title("Fourier Transform")
+        self.velocity_lineout_ax.set_title("Velocity")
+
+        self.img.show_data(self.img_ax, xlabel = 1)
+
+    def show_plot(self):
+        plt.tight_layout()
         plt.show()

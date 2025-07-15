@@ -4,7 +4,7 @@ Script for generating synthetic data
 from VISAR import *
 from SyntheticData import *
 
-show = False
+show = 0
 
 if not os.path.exists("SyntheticData"):
     os.mkdir("SyntheticData")
