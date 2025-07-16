@@ -7,18 +7,15 @@ Generating CSV files in Data and SyntheticData to be used for analysis
 """
 import os
 import pandas as pd
-from numpy import nan
 from datetime import datetime
 import re
-
-#Generate the Synthetic Data
-import generate_synthetic_data
+import numpy as np
 
 #create Analysis Folder
 if not os.path.exists("Analysis"):
     os.mkdir("Analysis")
 
-#%% JLF shot CSV reorganized
+# JLF shot CSV reorganized
 
 #Paths
 data_dir = "data"
@@ -87,7 +84,17 @@ for col in ['filename', 'Date', 'Shot no.', 'VISAR']:
     if col not in real_df.columns:
         real_df[col] = None
 
+# Moving 0326 Shot 5 to 03/27 date for Shot 5
+filename_date_corrections = {
+    '0326_1442_Shot5_Visar1.tif': '0327',
+    '0326_1442_Shot5_Visar2.tif': '0327',
+}
+
 def extract_date_from_filename(fname):
+    base = os.path.basename(fname)
+    if base in filename_date_corrections:
+        return filename_date_corrections[base]
+    
     m = re.match(r"^(\d{4})", fname)
     if m:
         mmdd = m.group(1)
@@ -208,51 +215,60 @@ real_df = real_df.sort_values(
 )
 real_df = real_df.drop(columns=['Date_sort', 'Shot_no_sort'])
 
+def is_valid(val):
+    return val not in [None, '', 'nan', 'NaN'] and not (isinstance(val, float) and np.isnan(val))
+
+def construct_name(row):
+    shot = row.get('Shot no.', '')
+    visar = row.get('VISAR', '')
+    fname = row.get('filename', '')
+    if is_valid(shot) and is_valid(visar):
+        return f"Shot{int(shot)}_Visar{int(visar)}"
+    elif isinstance(fname, str) and fname.lower().endswith('.tif'):
+        return os.path.splitext(os.path.basename(fname))[0]
+    else:
+        return ""
+
+real_df['Name'] = real_df.apply(construct_name, axis=1)
+
 real_df.to_csv(real_info_path, index=False)
 
-#%% Synthetic Data CSV
 
-#create info excel file for Synthetic analysis data
-df = pd.DataFrame({"Name": [], #Name of the data (can be anything)
-                   "Type": [], #type of the data (beam_ref, shot_ref, or shot)
-                   "Fname": [], #file for the shot
-                   "sweep_speed": [], #sweep speed for the shot
-                   "slit_size": [], #slit size of the camera
-                   "etalon": [], #the width of the etalon
-                   "Ref": [] #name of the reference for the shot
-                   })
-# Add synthetic beam reference
-df.loc[0] = [
-    "SyntheticBeam",
-    "beam_ref",
-    "SyntheticData/20nsBeamReference.tif",
-    20,
-    500,
-    20,
-    nan
-]
+# Analysis CSV (to be generated/appended in GUI)
 
-#synthetic shot reference
-df.loc[1] = [
-    "SyntheticShotRef",
-    "shot_ref",
-    "SyntheticData/20nsShotReference.tif",
-    20,
-    500,
-    20,
-    nan
-]
+def append_analysis_csv(
+    csv_path, 
+    name, 
+    type_, 
+    fname, 
+    sweep_speed, 
+    slit_size, 
+    etalon, 
+    ref, 
+    analysis_folder, 
+    notes=""
+):
 
-#synthetic shot reference
-df.loc[2] = [
-    "SyntheticShot",
-    "shot",
-    "SyntheticData/20nsShot.tif",
-    20,
-    500,
-    20,
-    "SyntheticShotRef"
-]
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+    else:
+        df = pd.DataFrame(columns=[
+            "Name", "Type", "Fname", "sweep_speed", "slit_size", "etalon", 
+            "Ref", "AnalysisFolder", "DateAnalyzed", "Notes"
+        ])
 
-#save excel to Analysis folder
-df.to_excel("Analysis/info.xlsx")
+    row = {
+        "Name": name,
+        "Type": type_,
+        "Fname": fname,
+        "sweep_speed": sweep_speed,
+        "slit_size": slit_size,
+        "etalon": etalon,
+        "AnalysisFolder": analysis_folder,
+        "DateAnalyzed": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "Notes": notes
+    }
+
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    df.to_csv(csv_path, index=False)
+    print(f"Appended analysis for {name} to {csv_path}")
