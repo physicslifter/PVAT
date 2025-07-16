@@ -8,8 +8,8 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.patheffects as pe
 import pandas as pd
 import numpy as np
-from scipy import ndimage
-from numpy.fft import fft, ifft, fftfreq, fftshift
+from scipy import ndimage, signal
+from scipy.fft import fft, ifft, fftfreq, fftshift
 
 plt.style.use(["fast"]) #fast plotting
 
@@ -449,6 +449,7 @@ class ShotAligner:
         self.has_shear_line = False
         self.sheared_angle = 0
         self.has_ref_lineout = 0
+        self.has_phase = False
         self.beam_calibration_applied = False
 
     def initialize_plot(self):
@@ -616,6 +617,7 @@ class AnalysisPlot:
         self.showing_visar = False
         self.showing_phase_region = False
         self.has_fft_lineout = False
+        self.transformed = False
 
     def open_shot(self):
         if not os.path.exists(self.shot_folder):
@@ -681,8 +683,8 @@ class AnalysisPlot:
         #phase buttons
         self.get_phase_button_ax = self.fig.add_axes([0.58, 0.4, 0.1, 0.05])
         self.get_phase_button = Button(self.get_phase_button_ax, "Get Phase")
-        self.get_phase_button_ax = self.fig.add_axes([0.58, 0.34, 0.1, 0.05])
-        self.get_phase_button = Button(self.get_phase_button_ax, "Save", color = "salmon")
+        self.save_phase_button_ax = self.fig.add_axes([0.58, 0.34, 0.1, 0.05])
+        self.save_phase_button = Button(self.save_phase_button_ax, "Save", color = "salmon")
 
         #velocity slider
         self.velo_slider_ax = self.fig.add_axes([0.62, 0.27, 0.25, 0.03])
@@ -760,10 +762,23 @@ class AnalysisPlot:
             self.fourier_max[0].set_xdata([self.fft_slider.val[1], self.fft_slider.val[1]])
             self.fourier_max[0].set_ydata([self.ref_fft.min(), self.ref_fft.max()])
 
+    def update_velo_slider(self, val):
+        if self.has_phase == True:
+            self.min_phase_lineout[0].set_ydata([self.velo_slider.val[0], self.velo_slider.val[0]])
+            self.max_phase_lineout[0].set_ydata([self.velo_slider.val[1], self.velo_slider.val[1]])
+            min_loc = int((self.velo_slider.val[0] - self.y_slider.val[0])/self.img.space_per_pixel)
+            max_loc = int((self.velo_slider.val[1] - self.y_slider.val[0])/self.img.space_per_pixel)
+            self.velocity = self.phase[min_loc:max_loc, :].mean(axis = 0)
+            self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
+            self.velo[0].set_ydata(self.velocity)
+            self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
+
     def click_fft_button(self, val):
         #get the fft from the reference region
         ref_lineout = self.img.take_vert_lineout(self.ref_slider.val[0], self.ref_slider.val[1], self.y_slider.val[0], self.y_slider.val[1])
+        print(ref_lineout.shape)
         fft_data = np.abs(fft(ref_lineout))
+        self.initial_phase = np.angle(fft_data)
         self.ref_fft = fft_data
         freq = fftfreq(len(ref_lineout))
         self.freq = freq
@@ -787,24 +802,77 @@ class AnalysisPlot:
         """
         Get the fourier transform for the VISAR data
         """
-        fourier_filter = self.fft_slider.val[0] < np.abs(self.freq) < self.fft_slider.val[1]
-        split_data = np.split(self.img.data, len(self.img.time), axis = 1)
-        fourier_data = []
-        for lineout in split_data:
-            fft_ = fft(lineout)
-            filtered_fft = fft_*fourier_filter
-            filtered_signal = ifft(filtered_fft).real #filter
-            fourier_data.append(filtered_signal)
-        fourier_filtered = np.vstack(fourier_data).T
+        #fourier_filter = np.multiply((self.freq < self.fft_slider.val[1]), (self.freq > self.fft_slider.val[0]))
+        min_space = int((self.y_slider.val[0] - self.img.space.min())/self.img.space_per_pixel)
+        max_space = int((self.y_slider.val[1] - self.img.space.min())/self.img.space_per_pixel)
+        min_time = int((self.x_slider.val[0] - self.img.time.min())/self.img.time_resolution)
+        max_time = int((self.x_slider.val[1] - self.img.time.min())/self.img.time_resolution)
+        data_chunk = self.img.data[min_space:max_space, min_time:max_time]
+        fft_ = fft(data_chunk, axis = 0)
+        phase = np.angle(fft_)
+        freq = np.abs(np.vstack([fftfreq(data_chunk.shape[1]) for i in range(data_chunk.shape[0])]))
+        print(freq.shape, fft_.shape)
+        filter = np.logical_and(freq > self.fft_slider.val[0], freq < self.fft_slider.val[1])
+        filtered_fft = fft_*filter
+        self.phase = phase*filter
+        print(data_chunk.shape, self.phase.shape)
+        self.phase = self.phase - self.initial_phase[:, np.newaxis]
+        fourier_filtered = ifft(filtered_fft, n = data_chunk.shape[1], axis = 0).real
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.set_title("Fourier Filtered")
+        X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], fourier_filtered.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], fourier_filtered.shape[0] + 1))
+        print(np.shape(X))
+        print(np.shape(Y))
+        print(np.shape(fourier_filtered))
+        print(fourier_filtered.min(), fourier_filtered.max())
+        heat_min = 0.01 if fourier_filtered.min() <= 0 else fourier_filtered.min()
+        ax.pcolormesh(X, Y, fourier_filtered, cmap='magma')
+        self.transformed = True
+        plt.show()
+
+    def initialize_velo_plot(self):
+        """
+        When we get the phase, we should also get the velocity lineout plot
+        """
+        phase_time = np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1])
+        min_loc, max_loc = int(self.phase.shape[0]* 0.2), int(self.phase.shape[0]*0.8)
+        min_loc_space = min_loc*self.img.space_per_pixel + self.y_slider.val[0]
+        max_loc_space = max_loc*self.img.space_per_pixel + self.y_slider.val[0]
+        self.velo_slider.valmin = self.y_slider.val[0]
+        self.velo_slider.valmax = self.y_slider.val[1]
+        self.velo_slider.set_val([min_loc_space, max_loc_space])
+        self.velo_slider_ax.set_xlim([min_loc_space, max_loc_space])
+        self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], c = "red")
+        self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], c = "red")
+        self.velocity = self.phase[min_loc:max_loc, :].mean(axis = 0)
+        self.velo = self.velocity_lineout_ax.plot(phase_time, self.velocity)
+        self.fig.canvas.draw_idle()
+
+    def click_get_phase(self, val):
+        """
+        Gets phase from transformed data
+        """
+        self.phase_ax.clear()
+        self.phase_ax.set_title("Phase")
+        if self.transformed == True:
+            X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
+            self.phase_ax.pcolormesh(X, Y, self.phase, cmap = "viridis")
+            self.initialize_velo_plot()
+            self.has_phase = True
+        self.fig.canvas.draw_idle()
 
     def set_sliders(self):
         self.x_slider.on_changed(self.update_x_slider)
         self.y_slider.on_changed(self.update_y_slider)
         self.ref_slider.on_changed(self.update_ref_slider)
         self.fft_slider.on_changed(self.update_fourier_slider)
+        self.velo_slider.on_changed(self.update_velo_slider)
 
     def set_buttons(self):
         self.fft_button.on_clicked(self.click_fft_button)
+        self.filter_button.on_clicked(self.click_filter_button)
+        self.get_phase_button.on_clicked(self.click_get_phase)
 
     def show_plot(self):
         if self.showing_visar == False:
