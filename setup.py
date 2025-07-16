@@ -205,11 +205,18 @@ for col in ['Date_clean', 'DateSimple', 'ShotExtracted', 'VisarExtracted']:
         real_df = real_df.drop(columns=[col])
 
 def determine_type(fname):
-    if pd.isnull(fname):
+    if not isinstance(fname, str):
+        return "Other" #is westbeam "Other" or "BeamRef"?
+    lower = fname.lower()
+    if "timingref" in lower or "timing_ref" in lower:
+        return "BeamRef"
+    if "shot" in lower and "ref" in lower:
+        return "ShotRef"
+    if "shot" in lower and "ref" not in lower:
         return "Shot"
-    if isinstance(fname, str):
-        return "BeamRef" if "ref" in fname.lower() else "Shot"
-    return "Shot"
+    if "pin" in lower:
+        return "Other"
+    return "Other"
 
 real_df["Type"] = real_df["filename"].apply(determine_type)
 
