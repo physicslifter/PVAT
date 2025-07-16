@@ -18,9 +18,14 @@ if not os.path.exists("Analysis"):
 # JLF shot CSV reorganized
 
 #Paths
-data_dir = "data"
-shot_log_path = os.path.join(data_dir, "JLF 2025 shot log.xlsx")
-real_info_path = os.path.join(data_dir, "real_info.csv")
+#if path is in your real data folder
+shot_log_path = "JLF 2025 shot log.xlsx" 
+real_info_path = "real_info.csv"
+
+#if path is in general folder with subfolders real data, synthetic data, analysis (see folders variable to comment out too)
+#data_dir = "data"
+#shot_log_path = os.path.join(data_dir, "JLF 2025 shot log.xlsx")
+#real_info_path = os.path.join(data_dir, "real_info.csv")
 
 df = pd.read_excel(shot_log_path, dtype=str, header=[0,1])
 
@@ -145,7 +150,9 @@ def parse_filename(fname, folder):
     datesimple = mmdd_to_datestr(mmdd)
     return datesimple, shot, visar
 
-folders = ['data/VISAR1', 'data/VISAR2']
+folders = ["VISAR1", "VISAR2]
+#folders = [os.path.join(data_dir, "VISAR1"), os.path.join(data_dir, "VISAR2")]
+
 all_files = []
 for folder in folders:
     for fname in os.listdir(folder):
