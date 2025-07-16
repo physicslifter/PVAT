@@ -3,19 +3,22 @@ Script for generating synthetic data
 
 That also saves a CSV file for synthetic data
 """
+
 from VISAR import VISARImage, RefImage
 from SyntheticData import SyntheticBeamCalibration, SyntheticShot
 import pandas as pd
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy import nan
+
 
 show = 0
 
 if not os.path.exists("SyntheticData"):
     os.mkdir("SyntheticData")
 
-#Shared parameters
+# Shared parameters
 shared_params = {
     "sweep_speed": 20,
     "slit_size": 500,
@@ -29,22 +32,25 @@ shared_params = {
     "height": 10,
 }
 
-#Type-specific
+# Type-specific
 dataset_types = [
     {
         "name": "SyntheticBeam",
         "tif_file": "SyntheticData/20nsBeamReference.tif",
         "type": "beamref",
+        "ref": nan,
     },
     {
         "name": "SyntheticShotRef",
         "tif_file": "SyntheticData/20nsShotReference.tif",
         "type": "shotref",
+        "ref": nan,
     },
     {
         "name": "SyntheticShot",
         "tif_file": "SyntheticData/20nsShot.tif",
         "type": "shot",
+        "ref": "SyntheticShotRef"
     },
 ]
 
@@ -58,6 +64,7 @@ df.to_csv("SyntheticData/synthetic_info.csv", index=False)
 
 #Generating Beam Reference, Shot Reference, and Shot Data
 images = []
+
 for _, row in df.iterrows():
     params = row.to_dict()
     if params["type"] == "beamref":
