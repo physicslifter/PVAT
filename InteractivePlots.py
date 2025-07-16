@@ -9,7 +9,7 @@ import matplotlib.patheffects as pe
 import pandas as pd
 import numpy as np
 from scipy import ndimage
-from scipy.fft import rfft, ifft, rfftfreq
+from numpy.fft import fft, ifft, fftfreq, fftshift
 
 plt.style.use(["fast"]) #fast plotting
 
@@ -624,20 +624,21 @@ class AnalysisPlot:
         try:
             self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
             self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
-            ref_folder = self.info["shot_ref"].values[0]
-            beam_folder = self.info["beam_ref"].values[0]
-            fname = self.info["fname"].values[0]
-            sweep_speed = self.info["sweep_speed"].values[0]
-            slit_size = self.info["slit_size"].values[0]
-            ref_info = pd.read_csv(f"{ref_folder}/info.csv")
-            shear_angle = ref_info["shear"].values[0]
-            correction = ImageCorrection(f"{beam_folder}/correction.csv")
-            self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
-            self.img.apply_correction(correction) #apply beam correction
-            self.img.shear_data(shear_angle) #apply shear from shot ref
-            self.img.align_time(self.time.time)
         except:
             raise Exception("Shot folder could not be read")
+        ref_folder = self.info["shot_ref"].values[0]
+        beam_folder = self.info["beam_ref"].values[0]
+        fname = self.info["fname"].values[0]
+        sweep_speed = self.info["sweep_speed"].values[0]
+        slit_size = self.info["slit_size"].values[0]
+        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
+        shear_angle = ref_info["shear"].values[0]
+        correction = ImageCorrection(f"{beam_folder}/correction.csv")
+        self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
+        print("\n\n\n====\n\n\n")
+        self.img.apply_correction(correction) #apply beam correction
+        self.img.shear_data(shear_angle) #apply shear from shot ref
+        self.img.align_time(self.time.time)
         
     def initialize_plot(self):
         self.name = f"{self.img.fname.split('/')[-1].lower().replace('.tif', '')}"
@@ -693,6 +694,21 @@ class AnalysisPlot:
         self.fourier_lineout_ax.set_title("Fourier Transform")
         self.velocity_lineout_ax.set_title("Velocity")
 
+    def fft_plot_zoom_update(self, ax_instance):
+        valmin, valmax = ax_instance.get_xlim()
+        #update slider bounds
+        self.fft_slider.valmin = valmin
+        self.fft_slider.valmax = valmax
+        #update slider ax bounds
+        self.fft_slider_ax.set_xlim(valmin, valmax)
+        slider_val = list(self.fft_slider.val)
+        new_slider_val = slider_val
+        if valmin < self.fft_slider.val[0]:
+            new_slider_val[0] = valmin
+        if valmax > self.fft_slider.val[1]:
+            new_slider_val[1] = valmax
+        self.fft_slider.set_val(new_slider_val)
+
     def show_visar(self):
         self.img.show_data(self.img_ax)
         self.showing_visar = True
@@ -736,25 +752,56 @@ class AnalysisPlot:
     def update_ref_slider(self, val):
         self.min_ref[0].set_xdata([val[0], val[0]])
         self.max_ref[0].set_xdata([val[1], val[1]])
-        self.fig.canvas.draw_idle()
+
+    def update_fourier_slider(self, val):
+        if self.has_fft_lineout == True:
+            self.fourier_min[0].set_xdata([self.fft_slider.val[0], self.fft_slider.val[0]])
+            self.fourier_min[0].set_ydata([self.ref_fft.min(), self.ref_fft.max()])
+            self.fourier_max[0].set_xdata([self.fft_slider.val[1], self.fft_slider.val[1]])
+            self.fourier_max[0].set_ydata([self.ref_fft.min(), self.ref_fft.max()])
 
     def click_fft_button(self, val):
-        ref_lineout = self.img.take_vert_lineout(self.ref_slider.val[0], self.ref_slider.val[1])
-        fft_data = rfft(ref_lineout)
-        freq = rfftfreq(len(ref_lineout))
+        #get the fft from the reference region
+        ref_lineout = self.img.take_vert_lineout(self.ref_slider.val[0], self.ref_slider.val[1], self.y_slider.val[0], self.y_slider.val[1])
+        fft_data = np.abs(fft(ref_lineout))
+        self.ref_fft = fft_data
+        freq = fftfreq(len(ref_lineout))
+        self.freq = freq
+        self.fft_slider.xmin = min(freq)
+        self.fft_slider.xmax = max(freq)
+        self.fft_slider.set_val(((max(freq) - min(freq))*0.2 + min(freq), (max(freq) - min(freq))*0.8 + min(freq)))
         if self.has_fft_lineout == False:
-            self.fft = self.fourier_lineout_ax.plot(freq, fft_data)
-            #set fft slider bounds
-            self.fft_slider.xmin = min(freq)
-            self.fft_slider.xmax = max(freq)
-            self.fft_slider.set_val(((max(freq) - min(freq))*0.2 + min(freq), (max(freq) - min(freq))*0.8 + min(freq)))
+            self.fft = self.fourier_lineout_ax.plot(freq[:len(ref_lineout)//2], fft_data[0:len(ref_lineout)//2])
+            self.fourier_min = self.fourier_lineout_ax.plot([self.fft_slider.val[0], self.fft_slider.val[0]], [fft_data.min(), fft_data.max()], color = "red")
+            self.fourier_max = self.fourier_lineout_ax.plot([self.fft_slider.val[1], self.fft_slider.val[1]], [fft_data.min(), fft_data.max()], color = "red")
         else:
-            self.fft[0].set_data(freq, fft_data)
+            self.fft[0].set_data(freq[:len(ref_lineout)//2], fft_data[0:len(ref_lineout)//2])
+            self.fourier_min[0].set_xdata([self.fft_slider.val[0], self.fft_slider.val[0]])
+            self.fourier_min[0].set_ydata([fft_data.min(), fft_data.max()])
+            self.fourier_max[0].set_xdata([self.fft_slider.val[0], self.fft_slider.val[0]])
+            self.fourier_max[0].set_ydata([fft_data.min(), fft_data.max()])
+        self.fig.canvas.draw_idle()
+        self.has_fft_lineout = True
+
+    def click_filter_button(self, val):
+        """
+        Get the fourier transform for the VISAR data
+        """
+        fourier_filter = self.fft_slider.val[0] < np.abs(self.freq) < self.fft_slider.val[1]
+        split_data = np.split(self.img.data, len(self.img.time), axis = 1)
+        fourier_data = []
+        for lineout in split_data:
+            fft_ = fft(lineout)
+            filtered_fft = fft_*fourier_filter
+            filtered_signal = ifft(filtered_fft).real #filter
+            fourier_data.append(filtered_signal)
+        fourier_filtered = np.vstack(fourier_data).T
 
     def set_sliders(self):
         self.x_slider.on_changed(self.update_x_slider)
         self.y_slider.on_changed(self.update_y_slider)
         self.ref_slider.on_changed(self.update_ref_slider)
+        self.fft_slider.on_changed(self.update_fourier_slider)
 
     def set_buttons(self):
         self.fft_button.on_clicked(self.click_fft_button)
@@ -766,5 +813,6 @@ class AnalysisPlot:
             self.show_phase_region()
         self.set_sliders()
         self.set_buttons()
+        self.fourier_lineout_ax.callbacks.connect("xlim_changed", self.fft_plot_zoom_update)
         plt.tight_layout()
         plt.show()

@@ -141,16 +141,18 @@ class VISARImage:
         self.lineout = self.data[min:max].mean(axis = 0)
         return self.lineout
     
-    def take_chunk(self, min_val, max_val):
+    def take_chunk(self, min_val, max_val, min_time=None, max_time=None):
         """
         Takes a horizontal chunk of data, but unlike lineout it doesn't flatten to the average
         """
+        min_time_val = 0 if type(min_time) == type(None) else int(min_time/self.time_resolution)
+        max_time_val = len(self.time) + 1 if type(max_time) == type(None) else int(max_time/self.time_resolution)
         at_max_space = True if max_val >= max(self.space) else False
         min_val = int(min_val/self.space_per_pixel)
         max_val = int(max_val/self.space_per_pixel)
         max_val = max_val + 1 if at_max_space == True else max_val
         #print(min_val, max_val)
-        chunk = self.data[min_val:max_val]
+        chunk = self.data[min_val:max_val, min_time_val:max_time_val]
         return chunk
     
     def fit_lineout(self, type="gaussian"):
@@ -219,13 +221,21 @@ class VISARImage:
         self.data = self.data[min_index:max_index]
         self.space = self.space[min_index:max_index]
 
-    def take_vert_lineout(self, min_time, max_time):
+    def take_vert_lineout(self, min_time, max_time, min_space, max_space):
         """
         Get a vertical lineout on the image
+        min/max time is the time bounds
+        min/max space is the space bounds
         """
-        minval = int(min_time/self.space_per_pixel)
-        maxval = int(max_time/self.space_per_pixel)
-        return self.data[:, minval:maxval].mean(axis = 1)
+        min_time = min_time - self.time.min()
+        max_time = max_time - self.time.max()
+        min_space = min_space - self.space.min()
+        max_space = max_space - self.space.max()
+        minval = int(min_time/self.time_resolution)
+        maxval = int(max_time/self.time_resolution)
+        minspace = int(min_space/self.space_per_pixel)
+        maxspace = int(max_space/self.space_per_pixel)
+        return self.data[minspace:maxspace, minval:maxval].mean(axis = 1)
 
     def shear_data(self, angle):
         """
