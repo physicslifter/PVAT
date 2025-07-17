@@ -228,6 +228,7 @@ class BeamAligner:
         self.save_time_calibration_button.on_clicked(self.click_save_time_cal)
 
     def show_plot(self):
+        self.initialize_plot()
         if self.showing_visar == False:
             self.plot_visar()
         if self.showing_lineouts == False:
@@ -426,6 +427,7 @@ class ShotRefAligner:
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
 
     def show_plot(self):
+        self.initialize_plot()
         if self.showing_visar == False:
             self.plot_visar()
         if self.showing_lineout == False:
@@ -599,6 +601,7 @@ class ShotAligner:
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
 
     def show_plot(self):
+        self.initialize_plot()
         if self.showing_visar == False:
             self.plot_visar()
         if self.showing_lineout == False:
@@ -875,6 +878,7 @@ class AnalysisPlot:
         self.get_phase_button.on_clicked(self.click_get_phase)
 
     def show_plot(self):
+        self.initialize_plot()
         if self.showing_visar == False:
             self.show_visar()
         if self.showing_phase_region == False:
