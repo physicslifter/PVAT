@@ -618,6 +618,7 @@ class AnalysisPlot:
         self.showing_phase_region = False
         self.has_fft_lineout = False
         self.transformed = False
+        self.has_phase = False
 
     def open_shot(self):
         if not os.path.exists(self.shot_folder):
@@ -681,14 +682,26 @@ class AnalysisPlot:
         self.filter_button = Button(self.filter_button_ax, label = "Filter")
 
         #phase buttons
-        self.get_phase_button_ax = self.fig.add_axes([0.58, 0.4, 0.1, 0.05])
+        self.get_phase_button_ax = self.fig.add_axes([0.55, 0.43, 0.1, 0.05])
         self.get_phase_button = Button(self.get_phase_button_ax, "Get Phase")
-        self.save_phase_button_ax = self.fig.add_axes([0.58, 0.34, 0.1, 0.05])
+        self.zero_phase_button_ax = self.fig.add_axes([0.55, 0.37, 0.1, 0.05])
+        self.get_phase_button = Button(self.zero_phase_button_ax, "Zero Phase")
+        self.save_phase_button_ax = self.fig.add_axes([0.55, 0.31, 0.1, 0.05])
         self.save_phase_button = Button(self.save_phase_button_ax, "Save", color = "salmon")
 
         #velocity slider
         self.velo_slider_ax = self.fig.add_axes([0.62, 0.27, 0.25, 0.03])
         self.velo_slider = RangeSlider(self.velo_slider_ax, "Lineout\n Bounds", 0, 1)
+
+        #Filtering info
+        self.gaussian_filter_ax = self.fig.add_axes([0.75, 0.42, 0.08, 0.03])
+        self.gaussian_filter_button = Button(self.gaussian_filter_ax, "Gauss")  
+        self.median_filter_ax = self.fig.add_axes([0.75, 0.38, 0.08, 0.03])
+        self.median_filter_button = Button(self.median_filter_ax, "Median")  
+        self.median_x_entry_ax = self.fig.add_axes([0.86, 0.38, 0.04, 0.03])
+        self.median_y_entry_ax = self.fig.add_axes([0.93, 0.38, 0.04, 0.03])
+        self.median_x_entry = TextBox(self.median_x_entry_ax, "x ", initial = "1")
+        self.median_y_entry = TextBox(self.median_y_entry_ax, "y ", initial = "1")
 
         #title axes
         self.img_ax.set_title("Calibrated Image")
@@ -776,6 +789,7 @@ class AnalysisPlot:
     def click_fft_button(self, val):
         #get the fft from the reference region
         ref_lineout = self.img.take_vert_lineout(self.ref_slider.val[0], self.ref_slider.val[1], self.y_slider.val[0], self.y_slider.val[1])
+        self.ref_lineout = ref_lineout
         print(ref_lineout.shape)
         fft_data = np.abs(fft(ref_lineout))
         self.initial_phase = np.angle(fft_data)
@@ -814,13 +828,20 @@ class AnalysisPlot:
         print(freq.shape, fft_.shape)
         filter = np.logical_and(freq > self.fft_slider.val[0], freq < self.fft_slider.val[1])
         filtered_fft = fft_*filter
-        self.phase = phase*filter
+        freq = fftfreq(data_chunk.shape[0])
+        filter_mask = np.logical_and(freq > self.fft_slider.val[0], freq < self.fft_slider.val[1])
+        filtered_fft = fft_ * filter_mask[:,np.newaxis]
+        #self.phase = np.angle(filtered_fft)
+        self.phase = np.unwrap(np.angle(filtered_fft), axis=0)
         print(data_chunk.shape, self.phase.shape)
-        self.phase = self.phase - self.initial_phase[:, np.newaxis]
+        #self.phase = self.phase - self.initial_phase[:, np.newaxis]
+        self.original_phase = self.phase
         fourier_filtered = ifft(filtered_fft, n = data_chunk.shape[1], axis = 0).real
         fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        ax = fig.add_subplot(1, 2, 1)
+        ax2 = fig.add_subplot(1, 2, 2)
         ax.set_title("Fourier Filtered")
+        ax2.set_title("Reference Lineout")
         X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], fourier_filtered.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], fourier_filtered.shape[0] + 1))
         print(np.shape(X))
         print(np.shape(Y))
@@ -828,6 +849,7 @@ class AnalysisPlot:
         print(fourier_filtered.min(), fourier_filtered.max())
         heat_min = 0.01 if fourier_filtered.min() <= 0 else fourier_filtered.min()
         ax.pcolormesh(X, Y, fourier_filtered, cmap='magma')
+        ax2.plot(np.linspace(self.y_slider.val[0], self.y_slider.val[1], len(self.ref_lineout)), self.ref_lineout)
         self.transformed = True
         plt.show()
 
@@ -855,12 +877,50 @@ class AnalysisPlot:
         """
         self.phase_ax.clear()
         self.phase_ax.set_title("Phase")
+        self.velocity_lineout_ax.clear()
+        self.velocity_lineout_ax.set_title("Velocity")
         if self.transformed == True:
             X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
-            self.phase_ax.pcolormesh(X, Y, self.phase, cmap = "viridis")
+            self.phase_ax.pcolormesh(X, Y, self.original_phase, cmap = "viridis")
             self.initialize_velo_plot()
             self.has_phase = True
         self.fig.canvas.draw_idle()
+
+    def click_gaussian_filter(self, val):
+        if self.transformed == True:
+            self.phase = ndimage.gaussian_filter(self.phase, sigma = np.std(self.phase))
+            self.phase_ax.clear()
+            self.phase_ax.set_title("Phase")
+            X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
+            vmin = int((self.velo_slider.val[0] - self.y_slider.val[0])/self.img.space_per_pixel)
+            vmax = int((self.velo_slider.val[1] - self.y_slider.val[0])/self.img.space_per_pixel)
+            self.velocity = self.phase[vmin:vmax, :].mean(axis = 0)
+            self.phase_ax.pcolormesh(X, Y, self.phase, cmap = "viridis")
+            self.velo[0].set_ydata(self.velocity)
+            self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
+            self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
+            print("Gaussian filtered")
+            self.fig.canvas.draw_idle()
+
+    def click_median_filter(self, val):
+        if self.transformed == True:
+            self.phase = ndimage.median_filter(self.phase, size = (int(self.median_x_entry.text), int(self.median_y_entry.text)))
+            self.phase_ax.clear()
+            self.phase_ax.set_title("Phase")
+            X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
+            vmin = int((self.velo_slider.val[0] - self.y_slider.val[0])/self.img.space_per_pixel)
+            vmax = int((self.velo_slider.val[1] - self.y_slider.val[0])/self.img.space_per_pixel)
+            self.velocity = self.phase[vmin:vmax, :].mean(axis = 0)
+            self.phase_ax.pcolormesh(X, Y, self.phase, cmap = "viridis")
+            self.velo[0].set_ydata(self.velocity)
+            self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
+            self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
+            print("Median filtered")
+            self.fig.canvas.draw_idle()
+
+    def click_zero_phase(self, val):
+        if self.transformed == True:
+            pass
 
     def set_sliders(self):
         self.x_slider.on_changed(self.update_x_slider)
@@ -873,6 +933,8 @@ class AnalysisPlot:
         self.fft_button.on_clicked(self.click_fft_button)
         self.filter_button.on_clicked(self.click_filter_button)
         self.get_phase_button.on_clicked(self.click_get_phase)
+        self.gaussian_filter_button.on_clicked(self.click_gaussian_filter)
+        self.median_filter_button.on_clicked(self.click_median_filter)
 
     def show_plot(self):
         if self.showing_visar == False:
