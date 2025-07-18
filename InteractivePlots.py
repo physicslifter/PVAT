@@ -688,7 +688,7 @@ class AnalysisPlot:
         self.get_phase_button_ax = self.fig.add_axes([0.55, 0.43, 0.1, 0.05])
         self.get_phase_button = Button(self.get_phase_button_ax, "Get Phase")
         self.zero_phase_button_ax = self.fig.add_axes([0.55, 0.37, 0.1, 0.05])
-        self.get_phase_button = Button(self.zero_phase_button_ax, "Zero Phase")
+        self.zero_phase_button = Button(self.zero_phase_button_ax, "Zero Phase")
         self.save_phase_button_ax = self.fig.add_axes([0.55, 0.31, 0.1, 0.05])
         self.save_phase_button = Button(self.save_phase_button_ax, "Save", color = "salmon")
 
@@ -705,6 +705,13 @@ class AnalysisPlot:
         self.median_y_entry_ax = self.fig.add_axes([0.93, 0.38, 0.04, 0.03])
         self.median_x_entry = TextBox(self.median_x_entry_ax, "x ", initial = "1")
         self.median_y_entry = TextBox(self.median_y_entry_ax, "y ", initial = "1")
+
+        #vpf entry box
+        self.vpf_entry_ax = self.fig.add_axes([0.62, 0.23, 0.1, 0.03])
+        self.vpf_box = TextBox(self.vpf_entry_ax, "", "1", color = "salmon")
+        self.vpf = float(self.vpf_box.text)
+        self.vpf_button_ax = self.fig.add_axes([0.57, 0.23, 0.04, 0.03])
+        self.vpf_button = Button(self.vpf_button_ax, "VPF", color = "salmon")
 
         #title axes
         self.img_ax.set_title("Calibrated Image")
@@ -887,6 +894,7 @@ class AnalysisPlot:
             self.phase_ax.pcolormesh(X, Y, self.original_phase, cmap = "viridis")
             self.initialize_velo_plot()
             self.has_phase = True
+            self.vpf_applied = False
         self.fig.canvas.draw_idle()
 
     def click_gaussian_filter(self, val):
@@ -903,6 +911,7 @@ class AnalysisPlot:
             self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
             self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
             print("Gaussian filtered")
+            self.vpf_applied = False
             self.fig.canvas.draw_idle()
 
     def click_median_filter(self, val):
@@ -919,11 +928,39 @@ class AnalysisPlot:
             self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
             self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
             print("Median filtered")
+            self.vpf_applied = False
             self.fig.canvas.draw_idle()
 
     def click_zero_phase(self, val):
         if self.transformed == True:
-            pass
+            minval = int((self.ref_slider.val[0] - self.x_slider.val[0])/self.img.time_resolution)
+            maxval = int((self.ref_slider.val[1] - self.x_slider.val[0])/self.img.time_resolution)
+            self.zero_phase = self.velocity[minval:maxval].mean()
+            self.phase -= self.zero_phase
+            self.phase_ax.clear()
+            self.phase_ax.set_title("Phase")
+            X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
+            vmin = int((self.velo_slider.val[0] - self.y_slider.val[0])/self.img.space_per_pixel)
+            vmax = int((self.velo_slider.val[1] - self.y_slider.val[0])/self.img.space_per_pixel)
+            self.velocity = self.phase[vmin:vmax, :].mean(axis = 0)
+            self.phase_ax.pcolormesh(X, Y, self.phase, cmap = "viridis")
+            self.velo[0].set_ydata(self.velocity)
+            self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
+            self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
+            print("Phase zeroed")
+            self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
+            self.fig.canvas.draw_idle()
+
+    def click_vpf(self, val):
+        """
+        Apply vpf correction upon click
+        """
+        if self.vpf_applied == False:
+            self.velocity = self.velocity * float(self.vpf_box.text)
+        self.velo[0].set_ydata(self.velocity)
+        self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
+        self.fig.canvas.draw_idle()
+        self.vpf_applied = True
 
     def set_sliders(self):
         self.x_slider.on_changed(self.update_x_slider)
@@ -938,6 +975,8 @@ class AnalysisPlot:
         self.get_phase_button.on_clicked(self.click_get_phase)
         self.gaussian_filter_button.on_clicked(self.click_gaussian_filter)
         self.median_filter_button.on_clicked(self.click_median_filter)
+        self.zero_phase_button.on_clicked(self.click_zero_phase)
+        self.vpf_button.on_clicked(self.click_vpf)
 
     def show_plot(self):
         self.initialize_plot()
