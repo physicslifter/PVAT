@@ -1,12 +1,71 @@
 """
 Tools for managing an analysis
+
+(Currently SingleShotAnalysis & BeamAlignmentAnalysis Unused...)
+
 """
+
 import os
 from VISAR import VISARImage, RefImage, TimingRef
 import pandas as pd
 from InteractivePlots import BeamAligner
 import shutil
 import re
+from datetime import datetime
+
+INFO_COLS = [
+    "Name", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", "slit_size", "etalon",
+    "analysis_location", "date_analyzed", "notes"
+]
+
+def ensure_info_xlsx(path):
+    """Ensure an info.xlsx exists with the correct columns."""
+    if not os.path.exists(path):
+        df = pd.DataFrame(columns=INFO_COLS)
+        df.to_excel(path, index=False)
+
+def append_info_xlsx(path, row):
+    """Append a row to the info.xlsx at the given path."""
+    ensure_info_xlsx(path)
+    df = pd.read_excel(path)
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    df.to_excel(path, index=False)
+
+def get_next_version(base_folder, base_name):
+    """Return the next available version number for a given analysis."""
+    if not os.path.exists(base_folder):
+        return 1
+    existing = [
+        d for d in os.listdir(base_folder)
+        if d.startswith(base_name + "_") and os.path.isdir(os.path.join(base_folder, d))
+    ]
+    versions = []
+    for d in existing:
+        try:
+            v = int(d.split("_")[-1])
+            versions.append(v)
+        except Exception:
+            continue
+    return max(versions, default=0) + 1
+
+def normalize_path(p):
+    return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
+
+def safe_str(val, default="Unknown"):
+    if pd.isnull(val) or val is None:
+        return default
+    return str(val)
+
+def strip_version_suffix(name):
+    return re.sub(r'_\d+$', '', name)
+
+def safe_float(val, default=None):
+    try:
+        if pd.isnull(val) or val is None or val == '' or str(val).lower() == 'nan':
+            return default
+        return float(val)
+    except Exception:
+        return default
 
 class SingleShotAnalysis:
     """
@@ -46,227 +105,148 @@ class BeamAlignmentAnalysis:
         self.aligner.set_lineout_save_name()
 
 class AnalysisManager:
-    """
-    Managing an analysis
-    """
-    def __init__(self, base_directory):
-        self.shot_data = {}
+    def __init__(self, base_directory="Analysis"):
         self.base_directory = base_directory
-        self.name = None  # Will be set when creating/opening an analysis
-        self.data_info = pd.DataFrame({"shot": [], "sweep_time": [], "slit_size": [], "fname": [], "ref_file": []})
+        os.makedirs(self.base_directory, exist_ok=True)
+        self.global_info_path = os.path.join(self.base_directory, "info.xlsx")
+        ensure_info_xlsx(self.global_info_path)
+        self.analysis_name = None
+        self.analysis_path = None
+        self.analysis_info_path = None
 
-    @property
-    def analysis_path(self):
-        if self.name is None:
-            raise Exception("No analysis selected.")
-        return os.path.join(self.base_directory, self.name)
+    def create_or_open_analysis(self, analysis_name):
+        """Create or open named analysis folder."""
+        self.analysis_name = analysis_name
+        self.analysis_path = os.path.join(self.base_directory, analysis_name)
+        os.makedirs(self.analysis_path, exist_ok=True)
+        self.analysis_info_path = os.path.join(self.analysis_path, "info.xlsx")
+        ensure_info_xlsx(self.analysis_info_path)
+        for sub in ["Shot", "ShotRef", "BeamRef", "Other"]:
+            os.makedirs(os.path.join(self.analysis_path, sub), exist_ok=True)
 
-    def open_analysis(self, name):
-        self.name = name
-        info_csv = os.path.join(self.analysis_path, "info.csv")
-        if os.path.exists(info_csv):
-            self.data_info = pd.read_csv(info_csv)
-        else:
-            self.data_info = pd.DataFrame({"shot": [], "sweep_time": [], "slit_size": [], "fname": [], "ref_file": []})
-
-    def create_new_analysis(self, name):
-        """
-        Generates a new analysis with the specified name
-        """
-        self.name = name
-        if os.path.exists(self.analysis_path):
-            raise Exception(f"Analysis {name} already exists at {self.analysis_path}")
-        os.makedirs(os.path.join(self.analysis_path, "Shots"))
-        os.makedirs(os.path.join(self.analysis_path, "TimingRefs"))
-        self.data_info.to_csv(os.path.join(self.analysis_path, "info.csv"), index=False)
-
-    def add_shot_to_analysis(self, 
-                             shot_file, 
-                             ref_file,
-                             sweep_speed,
-                             slit_size):
-        """
-        Given tif files for the shot and reference, add them
-        to the shot data dictionary
-
-        shot_file: the tif file for the shot
-        ref_file: the tif file for the reference
-        sweep_speed: the sweep speed of the camera for the shot
-        slit_size: slit width of the camera for the shot
-        timing_ref: name of timing reference
-        """
-        shot_label = os.path.splitext(os.path.basename(shot_file))[0].lower()
-        ref_label = os.path.splitext(os.path.basename(ref_file))[0].lower()
-        try:
-            self.shot_data[shot_label] = VISARImage(fname=shot_file, sweep_speed=sweep_speed, slit_size=slit_size)
-            self.shot_data[ref_label] = VISARImage(fname=ref_file, sweep_speed=sweep_speed, slit_size=slit_size)
-        except Exception as e:
-            raise Exception(f"Files not found or error loading images: {e}")
-
-        # Add info for the shot
-        self.data_info.loc[len(self.data_info)] = [shot_label, sweep_speed, slit_size, shot_file, ref_file]
-        self.data_info.to_csv(os.path.join(self.analysis_path, "info.csv"), index=False)
-
-        # Create a folder for the shot if needed
-        shots_folder = os.path.join(self.analysis_path, "Shots")
-        os.makedirs(shots_folder, exist_ok=True)
-        shot_subfolder = os.path.join(shots_folder, shot_label)
-        if shot_label not in os.listdir(shots_folder):
-            os.mkdir(shot_subfolder)
-
-    def organize_analysis_files(self, shot_label, ref_label):
-        """
-        Moves ref and shot output files into the correct subfolders.
-        Expects these files in the current directory:
-          - ref_lineout.csv
-          - ref_lineout.png
-          - ref_correction.csv
-          - shot_lineout.csv
-          - shot_lineout.png
-        """
-        shot_folder = os.path.join(self.analysis_path, "Shots", shot_label)
-        ref_folder = os.path.join(self.analysis_path, "TimingRefs", ref_label)
-        os.makedirs(shot_folder, exist_ok=True)
-        os.makedirs(ref_folder, exist_ok=True)
-
-        #Move shot files
-        shot_files = ["shot_lineout.csv", "shot_lineout.png"]
-        for fname in shot_files:
-            src = fname
-            dst = os.path.join(shot_folder, fname)
-            if os.path.exists(src):
-                shutil.move(src, dst)
-                print(f"Moved {src} -> {dst}")
-            else:
-                print(f"File not found: {src}")
-
-        #Move ref files
-        ref_files = ["ref_lineout.csv", "ref_lineout.png", "ref_correction.csv"]
-        for fname in ref_files:
-            src = fname
-            dst = os.path.join(ref_folder, fname)
-            if os.path.exists(src):
-                shutil.move(src, dst)
-                print(f"Moved {src} -> {dst}")
-            else:
-                print(f"File not found: {src}")
-
-        print("File organization complete.")
-
-    def update_info_csv_from_folders(self):
-        """
-        Scans the Shots and TimingRefs folders and updates info.csv
-        based on the actual files present.
-        Assumes that for each file, the filename encodes sweep_time and slit_size,
-        e.g., shot1_20ns_500um.tif
-        """
-        shots_folder = os.path.join(self.analysis_path, "Shots")
-        timingrefs_folder = os.path.join(self.analysis_path, "TimingRefs")
-        rows = []
-
-        def extract_metadata(filename):
-            # Example filename: shot1_20ns_500um.tif
-            match = re.match(r"(.+?)_(\d+)ns_(\d+)um\.tif", filename)
-            if match:
-                shot = match.group(1)
-                sweep_time = int(match.group(2))
-                slit_size = int(match.group(3))
-                return shot, sweep_time, slit_size
-            else:
-                return filename, None, None
-
-        #Scan Shots folder
-        for fname in os.listdir(shots_folder):
-            if fname.endswith(".tif"):
-                shot, sweep_time, slit_size = extract_metadata(fname)
-                rows.append({"shot": shot, "sweep_time": sweep_time, "slit_size": slit_size, "fname": fname, "ref_file": None})
-
-        #Scan TimingRefs folder
-        for fname in os.listdir(timingrefs_folder):
-            if fname.endswith(".tif"):
-                shot, sweep_time, slit_size = extract_metadata(fname)
-                rows.append({"shot": shot, "sweep_time": sweep_time, "slit_size": slit_size, "fname": None, "ref_file": fname})
-
-        info_df = pd.DataFrame(rows)
-        info_csv_path = os.path.join(self.analysis_path, "info.csv")
-        info_df.to_csv(info_csv_path, index=False)
-        print(f"Updated info.csv with {len(rows)} entries.")
-
-    def remove_analysis(self):
-        #deletes an analysis
-        shutil.rmtree(self.base_directory)
-
-class AM2:
-    """
-    Simple analysis manager to read that works from excel file in Analysis folder
-    """
-    def __init__(self, base_folder):
-        self.base_folder = base_folder
-        if not os.path.exists(self.base_folder):
-            raise Exception("Base folder not found")
-        self.get_excel()
-        self.has_folder = False
-
-    def get_excel(self):
-        """
-        Pulls info from the base folder
-        """
-        self.info = pd.read_excel(f"{self.base_folder}/info.xlsx")
-        self.beam_refs = self.info.where(self.info["Type"] == "beam_ref")["Name"].dropna().values
-        self.shot_refs = self.info.where(self.info["Type"] == "shot_ref")["Name"].dropna().values
-        self.shots = self.info.where(self.info["Type"] == "shot")["Name"].dropna().values
-
-    def get_filename(self, name):
-        "Given an img name, get the file for the img"
-        return self.info.where(self.info["Name"] == name).dropna()["Fname"].values[0]
-
-    def create_new_analysis(self, name):
-        self.analysis_name = name
-        os.mkdir(f"{self.base_folder}/{name}")
-        os.mkdir(f"{self.base_folder}/{name}/Shots")
-        os.mkdir(f"{self.base_folder}/{name}/ShotRefs")
-        os.mkdir(f"{self.base_folder}/{name}/BeamRefs")
-        self.has_folder = True
-
-    def open_analysis(self, name):
-        self.analysis_name = name
-        if name not in os.listdir(self.base_folder):
-            raise Exception("Analysis does not exist")
-
-    def analyze_beam_ref(self, name, analysis_name=None):
-        if name not in self.beam_refs:
-            raise Exception(f"{name} not found in beam references")
-        if self.has_folder == False:
-            raise Exception("Folder must be created before ref can be analyzed")
-        if analysis_name != None and analysis_name in os.listdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs"):
-            raise Exception("This name has already been saved")
-        info = self.info.where(self.info["Name"] == name).dropna()
-        prev_analyses = [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs") if name in i]
-        analysis_name = f"{name}_{len(prev_analyses)}" if analysis_name == None else analysis_name
-        beam_analysis_directory = f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}/{analysis_name}"
-        if not os.path.exists(f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}"):
-            os.mkdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}")
-        os.mkdir(beam_analysis_directory) #make directory for the shot analysis
-        ref = RefImage(fname = info["Fname"].values[0], folder = beam_analysis_directory, sweep_speed = info["sweep_speed"].values[0], slit_size = info["slit_size"].values[0])
-        aligner = BeamAligner(ref_img = ref)
-        aligner.initialize_plot()
-        aligner.show_plot()
-
-    def get_ref(self, shot_name):
-        #given a shot name, get the associated ref
-        pass
-
-    def get_shot_ref_analyses(self, name):
-        """
-        Given an img name, this returns a list
-        of the analyses for that shot
-        """
-        return [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/BeamRefs/{name}")]
+    def extract_info_from_csv(self, tif_file, csv_path):
+        df = pd.read_csv(csv_path, dtype=str)
+        norm_input = normalize_path(tif_file)
+        base = os.path.basename(tif_file)
+        base_noext = os.path.splitext(base)[0]
+        base_noext_stripped = strip_version_suffix(base_noext)
     
-    def get_shot_analyses(self, name):
-        return [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/Shots/{name}")]
+        df['norm_filename'] = df['filename'].fillna("").apply(normalize_path)
+        df['norm_filepath'] = df.get('filepath', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
     
-    def get_shot_ref_analyses(self, name):
-        return [i for i in os.listdir(f"{self.base_folder}/{self.analysis_name}/Shot_Refs/{name}")]        
-
+        matches = df[df['norm_filepath'] == norm_input]
+        if matches.empty:
+            matches = df[df['norm_filename'] == norm_input]
+        if matches.empty:
+            matches = df[df['filename'].astype(str).apply(lambda x: os.path.basename(x) == base)]
+        if matches.empty:
+            matches = df[df['filename'].astype(str).apply(lambda x: os.path.splitext(os.path.basename(x))[0] == base_noext)]
+        if matches.empty:
+            matches = df[df['filename'].astype(str).apply(
+                lambda x: strip_version_suffix(os.path.splitext(os.path.basename(x))[0]) == base_noext_stripped
+            )]
+        if matches.empty:
+            matches = df[df['filename'].astype(str).str.contains(base_noext_stripped, na=False, case=False)]
+        if matches.empty:
+            print("DEBUG: No match found.")
+            print("Looking for:", tif_file)
+            print("Base:", base)
+            print("Base noext:", base_noext)
+            print("All CSV filenames:", df['filename'].dropna().unique())
+            raise ValueError(f"No entry found in {csv_path} for file {tif_file}")
+    
+        row = matches.iloc[0]
+        info_row = {
+            "Name": safe_str(row.get("Name", "")),
+            "Type": safe_str(row.get("Type", "")),
+            "Filename": safe_str(row.get("filename", tif_file)),
+            "Filepath": safe_str(row.get("Filepath", tif_file)),
+            "sweep_speed": safe_float(row.get("sweep_time", ""), default=20),
+            "slit_size": safe_float(row.get("slit_size", ""), default=500),
+            "etalon": safe_str(row.get("etalon", "")),
+        }
         
+        if "synthetic" in csv_path.lower():
+            info_row["DataSource"] = "Synthetic Data"
+        else:
+            info_row["DataSource"] = "Real Data"
+        
+        print("Extracted info_row:", info_row)
+        return info_row
+
+    def save_analysis_instance(
+        self,
+        data_type,
+        base_name,
+        info_row,
+        notes=""
+    ):
+        """
+        Create a new versioned analysis instance and update all info files.
+        Returns the instance folder path.
+        """
+        parent_folder = os.path.join(self.analysis_path, safe_str(data_type))
+
+        os.makedirs(parent_folder, exist_ok=True)
+        base_folder = os.path.join(parent_folder, safe_str(base_name))
+
+        os.makedirs(base_folder, exist_ok=True)
+        version = get_next_version(base_folder, safe_str(base_name))
+        instance_folder = os.path.join(base_folder, f"{safe_str(base_name)}_{version}")
+        os.makedirs(instance_folder, exist_ok=True)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row = {k: safe_str(v) for k, v in info_row.items()}  
+        row.update({
+            "analysis_location": os.path.abspath(instance_folder),
+            "date_analyzed": now,
+            "notes": notes
+        })
+        instance_info_path = os.path.join(instance_folder, "info.xlsx")
+        pd.DataFrame([row], columns=INFO_COLS).to_excel(instance_info_path, index=False)
+        append_info_xlsx(self.analysis_info_path, row)
+        append_info_xlsx(self.global_info_path, row)
+        return instance_folder
+
+    def list_versions(self, data_type, base_name):
+        """List versions for analysis base name."""
+        parent_folder = os.path.join(self.analysis_path, data_type)
+        base_folder = os.path.join(parent_folder, base_name)
+        if not os.path.exists(base_folder):
+            return []
+        return sorted([
+            d for d in os.listdir(base_folder)
+            if d.startswith(base_name + "_") and os.path.isdir(os.path.join(base_folder, d))
+        ])
+
+    def get_instance_info(self, data_type, base_name, version):
+        """Retrieve info for a specific analysis."""
+        instance_folder = os.path.join(
+            self.analysis_path, data_type, base_name, f"{base_name}_{version}"
+        )
+        info_path = os.path.join(instance_folder, "info.xlsx")
+        if os.path.exists(info_path):
+            return pd.read_excel(info_path).iloc[0].to_dict()
+        else:
+            return None
+
+    def remove_analysis(self, analysis_name):
+        """Deletes analysis and data."""
+        analysis_path = os.path.join(self.base_directory, analysis_name)
+        if os.path.exists(analysis_path):
+            shutil.rmtree(analysis_path)
+
+
+# Example:
+# if __name__ == "__main__":
+#     am = AnalysisManager()
+#     am.create_or_open_analysis("Analysis1")
+#     tif_file = "0404_1525_Shot38_Visar2_ref.tif"
+#     csv_path = "data/real_info.csv"
+#     info_row = am.extract_info_from_csv(tif_file, csv_path)
+#     folder = am.save_analysis_instance(
+#         data_type=info_row["Type"] if info_row["Type"] else "Shot",
+#         base_name=info_row["Name"] if info_row["Name"] else "Unknown",
+#         info_row=info_row
+#     )
+#     print(f"Saved new analysis instance at: {folder}")
+#     print("Current versions:", am.list_versions(info_row["Type"], info_row["Name"]))

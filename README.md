@@ -18,15 +18,19 @@ More python examples can be observed in test_VISAR.py
 ```
 pip install -r requirements.txt
 ```
-2. Generate Synthetic data and set up the general analysis folder
+2. Organize JLF Data
 ```
 python setup.py
 ```
+3. Generate Synthetic Data
+```
+python generate_synthetic_data.py
+```
 (tifs for the synthetic data will be put in /SyntheticData ) 
 
-2. Open the cli
+4. Run the GUI, selecting what you want to analyze
 ```
-python cli.py
+python gui.py
 ```
 
 

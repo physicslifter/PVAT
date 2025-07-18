@@ -79,7 +79,6 @@ for _, row in df_filtered.iterrows():
 
 real_info_df = pd.DataFrame(rows)
 real_info_df.to_csv(real_info_path, index=False)
-print(f"Saved cleaned and reshaped shot log to {real_info_path}")
 
 # Appending files to CSV
 
@@ -164,8 +163,14 @@ used_indices = set()
 
 real_df['Date_clean'] = real_df['Date'].astype(str).str.split().str[0]
 
+if 'filepath' not in real_df.columns:
+    real_df['filepath'] = None
+if 'filename' not in real_df.columns:
+    real_df['filename'] = None
+
 for folder, fname in all_files:
     full_path = fname
+    filename_no_ext = os.path.splitext(fname)[0]
     datesimple, shot, visar = parse_filename(fname, folder)
     matched = False
     if datesimple and shot and visar:
@@ -178,20 +183,23 @@ for folder, fname in all_files:
         if not matches.empty:
             assigned = False
             for idx, row in matches.iterrows():
-                if pd.isnull(row['filename']) or row['filename'] == '':
-                    real_df.at[idx, 'filename'] = full_path
+                if pd.isnull(row['filepath']) or row['filepath'] == '':
+                    real_df.at[idx, 'filename'] = filename_no_ext
+                    real_df.at[idx, 'filepath'] = full_path
                     used_indices.add(idx)
                     assigned = True
                     matched = True
                     break
             if not assigned:
                 new_row = matches.iloc[0].copy()
-                new_row['filename'] = full_path
+                new_row['filename'] = filename_no_ext
+                new_row['filepath'] = full_path
                 output_rows.append(new_row)
                 matched = True
     if not matched:
         new_row = {col: None for col in real_df.columns}
-        new_row['filename'] = full_path
+        new_row['filename'] = filename_no_ext
+        new_row['filepath'] = full_path
         new_row['Date'] = datesimple
         new_row['Shot no.'] = shot
         new_row['VISAR'] = visar
@@ -205,11 +213,20 @@ for col in ['Date_clean', 'DateSimple', 'ShotExtracted', 'VisarExtracted']:
         real_df = real_df.drop(columns=[col])
 
 def determine_type(fname):
-    if pd.isnull(fname):
+    if not isinstance(fname, str):
+        return "Other"
+    lower = fname.lower()
+    if "timingref" in lower or "timing_ref" in lower:
+        return "BeamRef"
+    if "westbeam" in lower or "west" in lower or "psWest" in lower or "nswest" in lower:
+        return "BeamRef"
+    if "shot" in lower and "ref" in lower:
+        return "ShotRef"
+    if "shot" in lower and "ref" not in lower:
         return "Shot"
-    if isinstance(fname, str):
-        return "BeamRef" if "ref" in fname.lower() else "Shot"
-    return "Shot"
+    if "pin" in lower:
+        return "Other"
+    return "Other"
 
 real_df["Type"] = real_df["filename"].apply(determine_type)
 
@@ -239,43 +256,3 @@ def construct_name(row):
 real_df['Name'] = real_df.apply(construct_name, axis=1)
 
 real_df.to_csv(real_info_path, index=False)
-
-
-# Analysis CSV (to be generated/appended in GUI)
-
-def append_analysis_csv(
-    csv_path, 
-    name, 
-    type_, 
-    fname, 
-    sweep_speed, 
-    slit_size, 
-    etalon, 
-    ref, 
-    analysis_folder, 
-    notes=""
-):
-
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-    else:
-        df = pd.DataFrame(columns=[
-            "Name", "Type", "Fname", "sweep_speed", "slit_size", "etalon", 
-            "Ref", "AnalysisFolder", "DateAnalyzed", "Notes"
-        ])
-
-    row = {
-        "Name": name,
-        "Type": type_,
-        "Fname": fname,
-        "sweep_speed": sweep_speed,
-        "slit_size": slit_size,
-        "etalon": etalon,
-        "AnalysisFolder": analysis_folder,
-        "DateAnalyzed": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "Notes": notes
-    }
-
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    df.to_csv(csv_path, index=False)
-    print(f"Appended analysis for {name} to {csv_path}")
