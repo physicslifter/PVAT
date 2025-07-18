@@ -35,22 +35,22 @@ shared_params = {
 # Type-specific
 dataset_types = [
     {
-        "name": "SyntheticBeam",
-        "tif_file": "SyntheticData/20nsBeamReference.tif",
-        "type": "beamref",
-        "ref": nan,
+        "Name": "SyntheticBeam",
+        "Filepath": "SyntheticData/20nsBeamReference.tif",
+        "Type": "BeamRef",
+        "Ref": nan,
     },
     {
-        "name": "SyntheticShotRef",
-        "tif_file": "SyntheticData/20nsShotReference.tif",
-        "type": "shotref",
-        "ref": nan,
+        "Name": "SyntheticShotRef",
+        "Filepath": "SyntheticData/20nsShotReference.tif",
+        "Type": "ShotRef",
+        "Ref": nan,
     },
     {
-        "name": "SyntheticShot",
-        "tif_file": "SyntheticData/20nsShot.tif",
-        "type": "shot",
-        "ref": "SyntheticShotRef"
+        "Name": "SyntheticShot",
+        "Filepath": "SyntheticData/20nsShot.tif",
+        "Type": "Shot",
+        "Ref": "SyntheticShotRef"
     },
 ]
 
@@ -67,7 +67,7 @@ images = []
 
 for _, row in df.iterrows():
     params = row.to_dict()
-    if params["type"] == "beamref":
+    if params["Type"] == "BeamRef":
         synthetic_beam = SyntheticBeamCalibration(
             params["sweep_speed"], params["slit_size"], params["time_points"], params["space_points"]
         )
@@ -75,12 +75,12 @@ for _, row in df.iterrows():
         synthetic_beam.generate_beam(3.5, 1, 2500, max_loc=430, shift=2/500)
         synthetic_beam.generate_fiducial(params["time_loc"], params["space_loc"], params["amp"], params["width"], params["height"])
         img = VISARImage(fname=None, data=synthetic_beam.data, sweep_speed=params["sweep_speed"], slit_size=params["slit_size"])
-        img.save_tif(params["tif_file"])
+        img.save_tif(params["Filepath"])
         images.append((img, "Beam"))
-        ref = RefImage(fname=params["tif_file"], sweep_speed=params["sweep_speed"], slit_size=params["slit_size"])
+        ref = RefImage(fname=params["Filepath"], sweep_speed=params["sweep_speed"], slit_size=params["slit_size"])
         ref.chop_beam(ybounds=(0, 430), num_slices=25)
         ref.save_chop_as_correction()
-    elif params["type"] == "shotref":
+    elif params["Type"] == "ShotRef":
         synthetic = SyntheticShot(
             params["sweep_speed"], params["slit_size"], params["time_points"], params["space_points"]
         )
@@ -101,9 +101,9 @@ for _, row in df.iterrows():
         img.chop_by_time(1.65, 20)
         img.chop_by_space(22, 500)
         img.chop_by_time(1.65, 20)
-        img.save_tif(params["tif_file"])
+        img.save_tif(params["Filepath"])
         images.append((img, "Shot Reference"))
-    elif params["type"] == "shot":
+    elif params["Type"] == "Shot":
         synthetic = SyntheticShot(
             params["sweep_speed"], params["slit_size"], params["time_points"], params["space_points"]
         )
@@ -123,7 +123,7 @@ for _, row in df.iterrows():
         img.shear_data(1.3)
         img.chop_by_time(1.65, 20)
         img.chop_by_space(22, 500)
-        img.save_tif(params["tif_file"])
+        img.save_tif(params["Filepath"])
         images.append((img, "Shot"))
 
 
