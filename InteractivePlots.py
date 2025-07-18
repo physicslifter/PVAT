@@ -82,6 +82,8 @@ class BeamAligner:
     def plot_lineouts(self):
         fiducial_lineout = self.ref.img.take_lineout(min = self.fiducial_lineout_slider.val[0], max = self.fiducial_lineout_slider.val[1])
         beam_lineout = self.ref.img.take_lineout(min = self.beam_lineout_slider.val[0], max = self.beam_lineout_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        beam_lineout = beam_lineout - np.median(beam_lineout)
         self.fiducial_lineout = self.lineout_ax.plot(self.ref.img.time, fiducial_lineout/fiducial_lineout.max(), label = "Fiducial", c = "green")[0]
         self.beam_lineout = self.lineout_ax.plot(self.ref.img.time, beam_lineout/beam_lineout.max(), label = "Beam", c = "goldenrod")[0]
         half_loc = self.get_half_max(self.ref.img.time, beam_lineout)
@@ -132,6 +134,8 @@ class BeamAligner:
     def take_lineouts(self):
         fiducial_lineout = self.ref.img.take_lineout(min = self.fiducial_lineout_slider.val[0], max = self.fiducial_lineout_slider.val[1])
         beam_lineout = self.ref.img.take_lineout(min = self.beam_lineout_slider.val[0], max = self.beam_lineout_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        beam_lineout = beam_lineout - np.median(beam_lineout)
         self.fiducial_lineout.set_xdata(self.ref.img.time)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
         self.beam_lineout.set_xdata(self.ref.img.time)
@@ -143,6 +147,10 @@ class BeamAligner:
         self.lineout_half_label.set_xdata([self.ref.img.time.min(), self.ref.img.time.max()])
         self.lineout_half_label.set_ydata([half_loc, half_loc])
         print("Lineout Taken")
+        chop = [int(0.1*len(self.ref.img.time)), int(0.9*len(self.ref.img.time))]
+        ymin = min((beam_lineout[chop[0]:chop[1]]/beam_lineout.max()).min(), (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min())
+        ymax = max((beam_lineout/beam_lineout[chop[0]:chop[1]].max()).max(), (fiducial_lineout/fiducial_lineout[chop[0]:chop[1]].max()).max())
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.current_beam_lineout = beam_lineout
         print(1)
         self.current_fiducial_lineout = fiducial_lineout
@@ -321,7 +329,12 @@ class ShotRefAligner:
         self.fiducial_lower = self.img_ax.axhline([self.fiducial_slider.val[0]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime", label = "Fiducial Bounds")
         self.fiducial_upper = self.img_ax.axhline([self.fiducial_slider.val[1]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime")
         fiducial_lineout = self.img.take_lineout(min = self.fiducial_slider.val[0], max = self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
         self.fiducial_lineout = self.lineout_ax.plot(self.img.time, fiducial_lineout/fiducial_lineout.max(), label = "Fiducial")[0]
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.showing_lineout = True
 
     def update_fiducial_bounds(self, val):
@@ -329,9 +342,13 @@ class ShotRefAligner:
         self.fiducial_lower.set_ydata([vmin, vmin])
         self.fiducial_upper.set_ydata([vmax, vmax])
         fiducial_lineout = self.img.take_lineout(vmin, vmax)
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
         self.fiducial_lineout.set_xdata(self.img.time)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
-        self.lineout_ax.set_ylim(0, 1)
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
 
     def set_ref_folder(self, folder):
         self.beam_ref = folder
@@ -350,6 +367,11 @@ class ShotRefAligner:
 
     def update_time_shift_slider(self, val):
         fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.fiducial_lineout.set_xdata(self.img.time - val)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
         self.fig.canvas.draw_idle()
@@ -400,6 +422,11 @@ class ShotRefAligner:
         self.img.set_time_to_zero(self.time_shift_slider.val)
         self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
         fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.fiducial_lineout.set_xdata(self.img.time)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
         self.img_ax.set_xlim(self.img.time.min(), self.img.time.max())
@@ -505,7 +532,12 @@ class ShotAligner:
         self.fiducial_lower = self.img_ax.axhline([self.fiducial_slider.val[0]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime", label = "Fiducial Bounds")
         self.fiducial_upper = self.img_ax.axhline([self.fiducial_slider.val[1]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime")
         fiducial_lineout = self.img.take_lineout(min = self.fiducial_slider.val[0], max = self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
         self.fiducial_lineout = self.lineout_ax.plot(self.img.time, fiducial_lineout/fiducial_lineout.max(), label = "Fiducial")[0]
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.showing_lineout = True
 
     def update_fiducial_bounds(self, val):
@@ -513,9 +545,13 @@ class ShotAligner:
         self.fiducial_lower.set_ydata([vmin, vmin])
         self.fiducial_upper.set_ydata([vmax, vmax])
         fiducial_lineout = self.img.take_lineout(vmin, vmax)
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
         self.fiducial_lineout.set_xdata(self.img.time)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
-        self.lineout_ax.set_ylim(0, 1)
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
 
     def set_beam_ref_folder(self, folder):
         self.beam_ref = folder
@@ -537,6 +573,11 @@ class ShotAligner:
 
     def update_time_shift_slider(self, val):
         fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.fiducial_lineout.set_xdata(self.img.time - val)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
         self.fig.canvas.draw_idle()
@@ -572,6 +613,11 @@ class ShotAligner:
         self.img.set_time_to_zero(self.time_shift_slider.val)
         self.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
         fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        chop = [int(0.1*len(self.img.time)), int(0.9*len(self.img.time))]
+        ymin =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).min()
+        ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
+        self.lineout_ax.set_ylim(ymin, ymax)
         self.fiducial_lineout.set_xdata(self.img.time)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
         self.img_ax.set_xlim(self.img.time.min(), self.img.time.max())
