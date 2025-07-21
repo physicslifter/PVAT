@@ -44,6 +44,21 @@ def find_real_data_files(csv_path, shot_input, visar_input, type_input):
         ]
     return filtered
 
+def extract_analysis_folder(path):
+    """
+    Extracts the folder name immediately after 'Analysis' in a path.
+    Handles both Windows and Unix-style paths.
+    """
+    if not isinstance(path, str):
+        return ""
+    # Normalize path separators
+    parts = os.path.normpath(path).split(os.sep)
+    try:
+        idx = parts.index('Analysis')
+        return parts[idx + 1] if idx + 1 < len(parts) else ""
+    except ValueError:
+        return ""
+
 class AnalysisGUI:
     def __init__(self):
         self.base_analysis_dir = "Analysis"
@@ -190,7 +205,7 @@ class AnalysisGUI:
     
         self.widgets.extend([ds_radio, shot_box, visar_box, type_radio, btn_search])
     
-        self.search_input = {'data_source': 'Real Data', 'shot': '', 'visar': '', 'type': 'BeamRef'}
+        self.search_input = {'data_source': 'Real Data', 'shot': '', 'visar': '', 'type': 'Shot'}
         ds_radio.on_clicked(lambda label: self.search_input.update({'data_source': label}))
         shot_box.on_submit(lambda text: self.search_input.update({'shot': text.strip()}))
         visar_box.on_submit(lambda text: self.search_input.update({'visar': text.strip()}))
@@ -212,7 +227,18 @@ class AnalysisGUI:
                 for sub in os.listdir(type_path):
                     ax_btn = plt.axes([0.07, y0, 0.3, button_height*0.9])
                     btn = Button(ax_btn, f"{t}/{sub}")
-                    btn.on_clicked(lambda event, p=os.path.join(type_path, sub): self.launch_analysis_from_folder(p))
+                    def on_click(event, type_path=type_path, sub=sub, t=t):
+                        instance_folder = os.path.join(type_path, sub)
+                        info_path = os.path.join(instance_folder, "info.xlsx")
+                        if os.path.exists(info_path):
+                            info = pd.read_excel(info_path).iloc[0]
+                            filename = info.get("Filepath") or info.get("filepath")
+                            filetype = info.get("Type")
+                            self.launch_analysis(filename, filetype)
+                        else:
+                            self.ax.set_title("info.xlsx not found in this analysis instance.")
+                            plt.draw()
+                    btn.on_clicked(on_click)
                     self.widgets.append(btn)
                     y0 -= button_height
         plt.draw()
@@ -224,36 +250,94 @@ class AnalysisGUI:
             self.ax.set_title("No info.xlsx found in Analysis folder.")
             plt.draw()
             return
-        df = pd.read_excel(self.analysis_info_xlsx, dtype=str)
+        print("Columns:", df.columns.tolist())
+        print("First few rows:\n", df.head())
+        print("Search input:", self.search_input)
+        
+        if 'Analysis_Path' in df.columns:
+            df['AnalysisFolder'] = df['Analysis_Path'].apply(extract_analysis_folder)
+        else:
+            df['AnalysisFolder'] = ""
+        
         mask = pd.Series([True] * len(df))
         if hasattr(self, 'selected_folder_index') and self.selected_folder_index is not None:
             folders = [f for f in os.listdir(self.base_analysis_dir)
                        if os.path.isdir(os.path.join(self.base_analysis_dir, f))]
             folders.sort()
             selected_folder = folders[self.selected_folder_index]
-            if 'AnalysisFolder' in df.columns:
-                mask &= (df['AnalysisFolder'] == selected_folder)
-            elif 'Folder' in df.columns:
-                mask &= (df['Folder'] == selected_folder)
+            mask &= (df['AnalysisFolder'] == selected_folder)
         if self.search_input['data_source']:
-            mask &= (df['DataSource'].str.lower() == self.search_input['data_source'].lower())
+            mask &= (df['DataSource'].astype(str).str.strip().str.lower() == str(self.search_input['data_source']).strip().lower())
         if self.search_input['shot']:
-            mask &= (df['ShotNo'].astype(str) == self.search_input['shot'])
+            mask &= (df['Shot no.'].astype(str).str.strip() == str(self.search_input['shot']).strip())
         if self.search_input['visar']:
-            mask &= (df['Visar'].astype(str) == self.search_input['visar'])
+            mask &= (df['Visar'].astype(str).str.strip() == str(self.search_input['visar']).strip())
         if self.search_input['type']:
-            mask &= (df['Type'].str.lower() == self.search_input['type'].lower())
+            mask &= (df['Type'].astype(str).str.strip().str.lower() == str(self.search_input['type']).strip().lower())
         filtered = df[mask]
-        y0 = 0.5
+        self.show_search_results(filtered)
+
+    def show_search_results(self, filtered_df):
+        self.clear_widgets()
+        if filtered_df.empty:
+            self.ax.set_title("No files found for this selection.")
+            btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+            btn_back.on_clicked(lambda event: self.prompt_open_saved())
+            self.widgets.append(btn_back)
+            plt.draw()
+            return
+    
+        self.ax.set_title("Select a file to analyze:")
+        y0 = 0.55
         button_height = 0.07
-        for i, row in filtered.iterrows():
-            label = row.get('Name', row.get('Fname', 'Unknown'))
-            ax_btn = plt.axes([0.5, y0, 0.35, button_height*0.9])
+        print("Filtered DataFrame columns:", filtered_df.columns)
+        for i, (_, row) in enumerate(filtered_df.iterrows()):
+            analysis_folder = row.get('AnalysisFolder')
+            base_label = row.get('Name') or row.get('Filename') or "Unnamed"
+            print("Row:", row)
+            if analysis_folder and str(analysis_folder).strip() and analysis_folder != base_label:
+                label = f"{base_label} ({analysis_folder})"
+            else:
+                label = base_label
+            ax_btn = plt.axes([0.2, y0, 0.6, button_height*0.9])
             btn = Button(ax_btn, label)
-            btn.on_clicked(lambda event, r=row: self.launch_analysis_from_search(r))
+            self.analysis_name = row.get("AnalysisFolder")
+            btn.on_clicked(lambda event, r=row: self.launch_analysis(r.get('Filepath') or r.get('filepath'), r.get('Type')))
             self.widgets.append(btn)
             y0 -= button_height
+            if y0 < 0.1:  
+                break
+    
+        btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+        btn_back.on_clicked(lambda event: self.prompt_open_saved())
+        self.widgets.append(btn_back)
         plt.draw()
+        
+        if 'AnalysisFolder' in filtered_df.columns:
+            filtered_df = filtered_df.drop(columns=['AnalysisFolder'])
+
+    def show_version_options(self, data_type, base_name):
+        self.clear_widgets()
+        latest_version = self.analysis_manager.get_latest_version(data_type, base_name)
+        if not latest_version:
+            self.ax.set_title("No versions found for this analysis.")
+            plt.draw()
+            return
+        btn_continue = Button(plt.axes([0.2, 0.5, 0.25, 0.1]), 'Continue Latest Version')
+        btn_continue.on_clicked(lambda event: self.launch_interactive_plot_for_version(data_type, base_name, latest_version))
+        btn_new = Button(plt.axes([0.55, 0.5, 0.25, 0.1]), 'Start New Version')
+        btn_new.on_clicked(lambda event: self.start_new_version_and_launch(data_type, base_name))
+        self.widgets.extend([btn_continue, btn_new])
+        self.ax.set_title(f"Analysis: {base_name}\nChoose how to proceed")
+        plt.draw()
+        
+    def launch_interactive_plot_for_version(self, data_type, base_name, version_folder):
+        instance_folder = os.path.join(self.analysis_manager.analysis_path, data_type, base_name, version_folder)
+        self.launch_interactive_plot(instance_folder, data_type)
+    
+    def start_new_version_and_launch(self, data_type, base_name):
+        instance_folder = self.analysis_manager.duplicate_version(data_type, base_name)
+        self.launch_interactive_plot(instance_folder, data_type)
 
     def prompt_analysis_name(self, new, data_source):
         self.clear_widgets()
