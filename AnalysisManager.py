@@ -14,8 +14,8 @@ import re
 from datetime import datetime
 
 INFO_COLS = [
-    "Name", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", "slit_size", "etalon",
-    "analysis_location", "date_analyzed", "notes"
+    "Name", "Shot no.", "Visar", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", "slit_size", "etalon",
+    "Analysis_Path", "Date_Analyzed", "Notes"
 ]
 
 def ensure_info_xlsx(path):
@@ -51,7 +51,7 @@ def get_next_version(base_folder, base_name):
 def normalize_path(p):
     return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
 
-def safe_str(val, default="Unknown"):
+def safe_str(val, default="None"):
     if pd.isnull(val) or val is None:
         return default
     return str(val)
@@ -66,6 +66,13 @@ def safe_float(val, default=None):
         return float(val)
     except Exception:
         return default
+
+def extract_shot_visar(name):
+    """Extract ShotNo and Visar from Name like 'Shot38_Visar2'."""
+    m = re.match(r'Shot(\d+)_Visar(\d+)', str(name))
+    if m:
+        return m.group(1), m.group(2)
+    return None, None
 
 class SingleShotAnalysis:
     """
@@ -126,12 +133,13 @@ class AnalysisManager:
 
     def extract_info_from_csv(self, tif_file, csv_path):
         df = pd.read_csv(csv_path, dtype=str)
+        df.columns = [col.lower() for col in df.columns]
         norm_input = normalize_path(tif_file)
         base = os.path.basename(tif_file)
         base_noext = os.path.splitext(base)[0]
         base_noext_stripped = strip_version_suffix(base_noext)
     
-        df['norm_filename'] = df['filename'].fillna("").apply(normalize_path)
+        df['norm_filename'] = df.get('filename', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
         df['norm_filepath'] = df.get('filepath', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
     
         matches = df[df['norm_filepath'] == norm_input]
@@ -152,14 +160,26 @@ class AnalysisManager:
             print("Looking for:", tif_file)
             print("Base:", base)
             print("Base noext:", base_noext)
-            print("All CSV filenames:", df['filename'].dropna().unique())
+            print("All CSV filenames:", df['Filename'].dropna().unique())
             raise ValueError(f"No entry found in {csv_path} for file {tif_file}")
     
         row = matches.iloc[0]
+        
+        is_real = "synthetic" not in csv_path.lower()
+        shot_no = safe_str(row.get("Shot no.", ""))
+        name_candidate = safe_str(row.get("Name", ""))
+        if is_real and ((not shot_no or shot_no.lower() == "nan") or (not name_candidate or name_candidate.strip().lower() == "none")):
+            base_filename = os.path.splitext(os.path.basename(safe_str(row.get("filename", tif_file))))[0]
+            name_value = base_filename
+        else:
+            name_value = name_candidate
+    
         info_row = {
-            "Name": safe_str(row.get("Name", "")),
+            "Name": name_value,
+            "Shot no.": shot_no,
+            "Visar": safe_str(row.get("VISAR", "")),
             "Type": safe_str(row.get("Type", "")),
-            "Filename": safe_str(row.get("filename", tif_file)),
+            "Filename": safe_str(row.get("Filename", tif_file)),
             "Filepath": safe_str(row.get("Filepath", tif_file)),
             "sweep_speed": safe_float(row.get("sweep_time", ""), default=20),
             "slit_size": safe_float(row.get("slit_size", ""), default=500),
@@ -196,10 +216,13 @@ class AnalysisManager:
         os.makedirs(instance_folder, exist_ok=True)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         row = {k: safe_str(v) for k, v in info_row.items()}  
+        shot_no, visar = extract_shot_visar(row.get("Name", ""))
         row.update({
-            "analysis_location": os.path.abspath(instance_folder),
-            "date_analyzed": now,
-            "notes": notes
+            # "Shot no.": shot_no,
+            # "Visar": visar,
+            "Analysis_Path": os.path.abspath(instance_folder),
+            "Date_Analyzed": now,
+            "Notes": notes
         })
         instance_info_path = os.path.join(instance_folder, "info.xlsx")
         pd.DataFrame([row], columns=INFO_COLS).to_excel(instance_info_path, index=False)
@@ -228,6 +251,24 @@ class AnalysisManager:
             return pd.read_excel(info_path).iloc[0].to_dict()
         else:
             return None
+
+    def get_latest_version(self, data_type, base_name):
+        versions = self.list_versions(data_type, base_name)
+        if not versions:
+            return None
+        latest = max(versions, key=lambda v: int(v.split('_')[-1]))
+        return latest
+
+    def duplicate_version(self, data_type, base_name):
+        versions = self.list_versions(data_type, base_name)
+        if not versions:
+            raise Exception("No existing version to duplicate.")
+        latest_version = max(versions, key=lambda v: int(v.split('_')[-1]))
+        src_folder = os.path.join(self.analysis_path, data_type, base_name, latest_version)
+        next_version_num = int(latest_version.split('_')[-1]) + 1
+        dest_folder = os.path.join(self.analysis_path, data_type, base_name, f"{base_name}_{next_version_num}")
+        shutil.copytree(src_folder, dest_folder)
+        return dest_folder
 
     def remove_analysis(self, analysis_name):
         """Deletes analysis and data."""
