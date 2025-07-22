@@ -47,11 +47,9 @@ def find_real_data_files(csv_path, shot_input, visar_input, type_input):
 def extract_analysis_folder(path):
     """
     Extracts the folder name immediately after 'Analysis' in a path.
-    Handles both Windows and Unix-style paths.
     """
     if not isinstance(path, str):
         return ""
-    # Normalize path separators
     parts = os.path.normpath(path).split(os.sep)
     try:
         idx = parts.index('Analysis')
@@ -250,8 +248,8 @@ class AnalysisGUI:
             self.ax.set_title("No info.xlsx found in Analysis folder.")
             plt.draw()
             return
-        print("Columns:", df.columns.tolist())
-        print("First few rows:\n", df.head())
+        # print("Columns:", df.columns.tolist())
+        # print("First few rows:\n", df.head())
         print("Search input:", self.search_input)
         
         if 'Analysis_Path' in df.columns:
@@ -288,27 +286,83 @@ class AnalysisGUI:
             return
     
         self.ax.set_title("Select a file to analyze:")
-        y0 = 0.55
+        y0 = 0.75
         button_height = 0.07
-        print("Filtered DataFrame columns:", filtered_df.columns)
+        
+        self.selected_file_row = None
+        self.selected_file_index = None
+        self.file_buttons = []
+        
         for i, (_, row) in enumerate(filtered_df.iterrows()):
             analysis_folder = row.get('AnalysisFolder')
             base_label = row.get('Name') or row.get('Filename') or "Unnamed"
-            print("Row:", row)
-            if analysis_folder and str(analysis_folder).strip() and analysis_folder != base_label:
-                label = f"{base_label} ({analysis_folder})"
-            else:
-                label = base_label
-            ax_btn = plt.axes([0.2, y0, 0.6, button_height*0.9])
-            btn = Button(ax_btn, label)
-            self.analysis_name = row.get("AnalysisFolder")
-            btn.on_clicked(lambda event, r=row: self.launch_analysis(r.get('Filepath') or r.get('filepath'), r.get('Type')))
+            label = f"{base_label} ({analysis_folder})" if analysis_folder and analysis_folder != base_label else base_label
+
+            ax_btn = plt.axes([0.2, y0, 0.6, button_height * 0.9])
+            btn = Button(ax_btn, label, color='0.85')
             self.widgets.append(btn)
+            self.file_buttons.append((btn, ax_btn, row, i))
             y0 -= button_height
             if y0 < 0.1:  
                 break
+            
+        def select_file(idx):
+            self.selected_file_index = idx
+            self.selected_file_row = self.file_buttons[idx][2]
+            for j, (btn, ax, row, _) in enumerate(self.file_buttons):
+                ax.clear()
+                color = 'lightblue' if j == idx else '0.85'
+                new_btn = Button(ax, btn.label.get_text(), color=color)
+                new_btn.on_clicked(lambda event, idx=j: select_file(idx))
+                self.file_buttons[j] = (new_btn, ax, row, j)
+            self.fig.canvas.draw_idle()
     
-        btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+        for j, (btn, ax, row, idx) in enumerate(self.file_buttons):
+            btn.on_clicked(lambda event, idx=idx: select_file(idx))
+    
+        btn_continue = Button(plt.axes([0.2, 0.2, 0.25, 0.08]), 'Continue Latest Version')
+        btn_new = Button(plt.axes([0.55, 0.2, 0.25, 0.08]), 'Start New Version')
+    
+        def continue_latest(event):
+            if self.selected_file_row is not None:
+                data_type = self.selected_file_row.get('Type')
+                base_name = self.selected_file_row.get('Name')
+                analysis_folder = self.selected_file_row.get('AnalysisFolder')
+                print(f"Continue latest: data_type={data_type}, base_name={base_name}, analysis_folder={analysis_folder}")
+                self.analysis_manager.create_or_open_analysis(analysis_folder)
+                latest_version = self.analysis_manager.get_latest_version(data_type, base_name)
+                print(f"Latest version: {latest_version}")
+                if latest_version:
+                    self.launch_interactive_plot_for_version(data_type, base_name, latest_version)
+                else:
+                    self.ax.set_title("No versions found for this analysis.")
+                    plt.draw()
+            else:
+                self.ax.set_title("Please select a file first.")
+                plt.draw()
+    
+        def start_new(event):
+            if self.selected_file_row is not None:
+                data_type = self.selected_file_row.get('Type')
+                base_name = self.selected_file_row.get('Name')
+                analysis_folder = self.selected_file_row.get('AnalysisFolder')
+                print(f"Start new: data_type={data_type}, base_name={base_name}, analysis_folder={analysis_folder}")
+                self.analysis_manager.create_or_open_analysis(analysis_folder)
+                try:
+                    instance_folder = self.analysis_manager.duplicate_version(data_type, base_name)
+                    self.launch_interactive_plot(instance_folder, data_type)
+                except Exception as e:
+                    self.ax.set_title(f"Failed to start new version: {e}")
+                    plt.draw()
+            else:
+                self.ax.set_title("Please select a file first.")
+                plt.draw()
+    
+        btn_continue.on_clicked(continue_latest)
+        btn_new.on_clicked(start_new)
+        self.widgets.extend([btn_continue, btn_new])
+
+        btn_back = Button(plt.axes([0.8, 0.05, 0.15, 0.08]), 'Back')
         btn_back.on_clicked(lambda event: self.prompt_open_saved())
         self.widgets.append(btn_back)
         plt.draw()
