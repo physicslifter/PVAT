@@ -74,6 +74,11 @@ class BeamAligner:
         self.take_lineout_button = Button(self.take_lineout_ax, "Take\nLineout")
         self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
         self.center_time_button = Button(self.center_time_ax, "Center Time")
+        
+        #Saving progress
+        self.save_progress_ax = self.fig.add_axes([0.85, 0.01, 0.13, 0.05])
+        self.save_progress_button = Button(self.save_progress_ax, "Save Progress")
+        self.save_progress_button.on_clicked(lambda event: self.save_progress())
 
     def plot_visar(self):
         self.ref.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
@@ -235,6 +240,43 @@ class BeamAligner:
         self.center_time_button.on_clicked(self.click_zero_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_cal)
 
+    def get_state_dict(self):
+        return {
+            "beam_lineout_slider_min": self.beam_lineout_slider.val[0],
+            "beam_lineout_slider_max": self.beam_lineout_slider.val[1],
+            "colormap_slider_min": self.colormap_slider.val[0],
+            "colormap_slider_max": self.colormap_slider.val[1],
+            "chopper_slider": self.chopper_slider.val,
+            "fiducial_lineout_slider_min": self.fiducial_lineout_slider.val[0],
+            "fiducial_lineout_slider_max": self.fiducial_lineout_slider.val[1],
+            "time_shift_slider": self.time_shift_slider.val,
+            # Add more as needed
+        }
+
+    def set_state_from_dict(self, state):
+        try:
+            self.beam_lineout_slider.set_val([float(state["beam_lineout_slider_min"]), float(state["beam_lineout_slider_max"])])
+            self.colormap_slider.set_val([float(state["colormap_slider_min"]), float(state["colormap_slider_max"])])
+            self.chopper_slider.set_val(float(state["chopper_slider"]))
+            self.fiducial_lineout_slider.set_val([float(state["fiducial_lineout_slider_min"]), float(state["fiducial_lineout_slider_max"])])
+            self.time_shift_slider.set_val(float(state["time_shift_slider"]))
+            # Add more as needed
+        except Exception as e:
+            print(f"Error loading progress: {e}")
+
+    def save_progress(self):
+        state = self.get_state_dict()
+        df = pd.DataFrame([state])
+        progress_path = os.path.join(self.ref.folder, "progress.csv")
+        df.to_csv(progress_path, index=False)
+
+    def load_progress(self):
+        progress_path = os.path.join(self.ref.folder, "progress.csv")
+        if os.path.exists(progress_path):
+            df = pd.read_csv(progress_path)
+            if not df.empty:
+                self.set_state_from_dict(df.iloc[0].to_dict())
+
     def show_plot(self):
         self.initialize_plot()
         if self.showing_visar == False:
@@ -245,6 +287,7 @@ class BeamAligner:
             self.plot_lineout_bounds()
         self.set_sliders()
         self.set_buttons()
+        self.load_progress()
         plt.show()
 
 
@@ -321,6 +364,11 @@ class ShotRefAligner:
         self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.72, 0.73, 0.14, 0.07])
         self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
         self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+        
+        #Save Progress
+        self.save_progress_ax = self.fig.add_axes([0.85, 0.01, 0.13, 0.05])
+        self.save_progress_button = Button(self.save_progress_ax, "Save Progress")
+        self.save_progress_button.on_clicked(lambda event: self.save_progress())
 
     def plot_initial_lineouts(self):
         """
@@ -453,6 +501,41 @@ class ShotRefAligner:
         self.center_time_button.on_clicked(self.click_center_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
 
+    def get_state_dict(self):
+        return {
+            "colormap_slider_min": self.colormap_slider.val[0],
+            "colormap_slider_max": self.colormap_slider.val[1],
+            "time_shift_slider": self.time_shift_slider.val,
+            "fiducial_slider_min": self.fiducial_slider.val[0],
+            "fiducial_slider_max": self.fiducial_slider.val[1],
+            "shear_slider": self.shear_slider.val,
+            "beam_ref": getattr(self, "beam_ref", ""),
+        }
+
+    def set_state_from_dict(self, state):
+        try:
+            self.colormap_slider.set_val([float(state["colormap_slider_min"]), float(state["colormap_slider_max"])])
+            self.time_shift_slider.set_val(float(state["time_shift_slider"]))
+            self.fiducial_slider.set_val([float(state["fiducial_slider_min"]), float(state["fiducial_slider_max"])])
+            self.shear_slider.set_val(float(state["shear_slider"]))
+            if "beam_ref" in state:
+                self.beam_ref = state["beam_ref"]
+        except Exception as e:
+            print(f"Error loading progress: {e}")
+
+    def save_progress(self):
+        state = self.get_state_dict()
+        df = pd.DataFrame([state])
+        progress_path = os.path.join(self.folder, "progress.csv")
+        df.to_csv(progress_path, index=False)
+
+    def load_progress(self):
+        progress_path = os.path.join(self.folder, "progress.csv")
+        if os.path.exists(progress_path):
+            df = pd.read_csv(progress_path)
+            if not df.empty:
+                self.set_state_from_dict(df.iloc[0].to_dict())
+
     def show_plot(self):
         self.initialize_plot()
         if self.showing_visar == False:
@@ -524,6 +607,11 @@ class ShotAligner:
         self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.82, 0.64, 0.14, 0.07])
         self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
         self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+        
+        #Save Progress
+        self.save_progress_ax = self.fig.add_axes([0.85, 0.01, 0.13, 0.05])
+        self.save_progress_button = Button(self.save_progress_ax, "Save Progress")
+        self.save_progress_button.on_clicked(lambda event: self.save_progress())
 
     def plot_initial_lineouts(self):
         """
@@ -646,6 +734,39 @@ class ShotAligner:
         self.center_time_button.on_clicked(self.click_center_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
 
+    def get_state_dict(self):
+        return {
+            "colormap_slider_min": self.colormap_slider.val[0],
+            "colormap_slider_max": self.colormap_slider.val[1],
+            "time_shift_slider": self.time_shift_slider.val,
+            "fiducial_slider_min": self.fiducial_slider.val[0],
+            "fiducial_slider_max": self.fiducial_slider.val[1],
+            "beam_ref": getattr(self, "beam_ref", ""),
+        }
+
+    def set_state_from_dict(self, state):
+        try:
+            self.colormap_slider.set_val([float(state["colormap_slider_min"]), float(state["colormap_slider_max"])])
+            self.time_shift_slider.set_val(float(state["time_shift_slider"]))
+            self.fiducial_slider.set_val([float(state["fiducial_slider_min"]), float(state["fiducial_slider_max"])])
+            if "beam_ref" in state:
+                self.beam_ref = state["beam_ref"]
+        except Exception as e:
+            print(f"Error loading progress: {e}")
+
+    def save_progress(self):
+        state = self.get_state_dict()
+        df = pd.DataFrame([state])
+        progress_path = os.path.join(self.folder, "progress.csv")
+        df.to_csv(progress_path, index=False)
+
+    def load_progress(self):
+        progress_path = os.path.join(self.folder, "progress.csv")
+        if os.path.exists(progress_path):
+            df = pd.read_csv(progress_path)
+            if not df.empty:
+                self.set_state_from_dict(df.iloc[0].to_dict())
+                
     def show_plot(self):
         self.initialize_plot()
         if self.showing_visar == False:
@@ -654,6 +775,7 @@ class ShotAligner:
             self.plot_initial_lineouts()
         self.set_sliders()
         self.set_buttons()
+        self.load_progress()
         plt.show()
 
 class AnalysisPlot:
