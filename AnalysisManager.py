@@ -137,7 +137,6 @@ class AnalysisManager:
         norm_input = normalize_path(tif_file)
         base = os.path.basename(tif_file)
         base_noext = os.path.splitext(base)[0]
-        base_noext_stripped = strip_version_suffix(base_noext)
     
         df['norm_filename'] = df.get('filename', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
         df['norm_filepath'] = df.get('filepath', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
@@ -150,48 +149,37 @@ class AnalysisManager:
         if matches.empty:
             matches = df[df['filename'].astype(str).apply(lambda x: os.path.splitext(os.path.basename(x))[0] == base_noext)]
         if matches.empty:
-            matches = df[df['filename'].astype(str).apply(
-                lambda x: strip_version_suffix(os.path.splitext(os.path.basename(x))[0]) == base_noext_stripped
-            )]
-        if matches.empty:
-            matches = df[df['filename'].astype(str).str.contains(base_noext_stripped, na=False, case=False)]
-        if matches.empty:
-            print("DEBUG: No match found.")
-            print("Looking for:", tif_file)
-            print("Base:", base)
-            print("Base noext:", base_noext)
-            print("All CSV filenames:", df['Filename'].dropna().unique())
             raise ValueError(f"No entry found in {csv_path} for file {tif_file}")
     
         row = matches.iloc[0]
         
-        is_real = "synthetic" not in csv_path.lower()
-        shot_no = safe_str(row.get("Shot no.", ""))
-        name_candidate = safe_str(row.get("Name", ""))
-        if is_real and ((not shot_no or shot_no.lower() == "nan") or (not name_candidate or name_candidate.strip().lower() == "none")):
-            base_filename = os.path.splitext(os.path.basename(safe_str(row.get("filename", tif_file))))[0]
-            name_value = base_filename
-        else:
-            name_value = name_candidate
-    
+        shot_no = safe_str(row.get("shot no.", ""))
+        visar = safe_str(row.get("visar", ""))
+        file_type = safe_str(row.get("type", ""))
+        name = safe_str(row.get("name", ""))
+        
+        if not name or name.lower() in ["none", "nan"]:
+            if shot_no and shot_no.lower() not in ["none", "nan", ""]:
+                if visar and visar.lower() not in ["none", "nan", ""]:
+                    name = f"Shot{int(float(shot_no))}_Visar{int(float(visar))}"
+                else:
+                    name = f"Shot{int(float(shot_no))}"
+            else:
+                name = base_noext
+                
         info_row = {
-            "Name": name_value,
+            "Name": name,
             "Shot no.": shot_no,
-            "Visar": safe_str(row.get("VISAR", "")),
-            "Type": safe_str(row.get("Type", "")),
-            "Filename": safe_str(row.get("Filename", tif_file)),
-            "Filepath": safe_str(row.get("Filepath", tif_file)),
+            "Visar": visar,
+            "Type": file_type,
+            "Filename": base_noext, #safe_str(row.get("Filename", tif_file)),
+            "Filepath": safe_str(row.get("filepath", tif_file)),
             "sweep_speed": safe_float(row.get("sweep_time", ""), default=20),
             "slit_size": safe_float(row.get("slit_size", ""), default=500),
             "etalon": safe_str(row.get("etalon", "")),
         }
         
-        if "synthetic" in csv_path.lower():
-            info_row["DataSource"] = "Synthetic Data"
-        else:
-            info_row["DataSource"] = "Real Data"
-        
-        print("Extracted info_row:", info_row)
+        info_row["DataSource"] = "Synthetic Data" if "synthetic" in csv_path.lower() else "Real Data"
         return info_row
 
     def save_analysis_instance(
