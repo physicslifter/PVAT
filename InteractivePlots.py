@@ -15,7 +15,7 @@ import os
 
 plt.style.use(["fast"]) #fast plotting
 
-#Helper function
+#Helper functions
 def launch_beamref_plot(fname, folder, sweep_speed, slit_size):
     from VISAR import RefImage
     from InteractivePlots import BeamAligner
@@ -465,10 +465,12 @@ class ShotRefAligner:
     def click_get_ref_lineout(self, val):
         if self.has_ref_lineout == False: #do nothing if we already have the lineout
             if self.beam_ref != "": #If a beam ref has been passed in
-                try:
-                    ref_data = pd.read_csv(f"{self.beam_ref}/lineouts.csv")
-                except:
-                    raise Exception("Ref data not found")
+                ref_data_path = os.path.join(self.beam_ref, "lineouts.csv")
+                ref_data_path = os.path.abspath(ref_data_path)
+                if not os.path.exists(ref_data_path):
+                    print(f"Reference lineouts file not found: {ref_data_path}")
+                    return  # Or show a GUI message
+                ref_data = pd.read_csv(ref_data_path)
             self.lineout_ax.plot(ref_data.time, ref_data.beam, label = "Reference Beam")
             self.lineout_ax.plot(ref_data.time, ref_data.fiducial, label = "Reference Fiducial")
             self.lineout_ax.legend()
@@ -476,16 +478,23 @@ class ShotRefAligner:
             self.fig.canvas.draw_idle()
 
     def click_apply_beam_calibration(self, val):
-        if self.beam_calibration_applied == False:
-            correction_path = os.path.join(self.beam_ref, "correction.csv")
-            if not os.path.exists(correction_path):
-                print(f"Correction file not found: {correction_path}")
-                return
-            calibration = ImageCorrection(os.path.join(self.beam_ref, "correction.csv"))
-            # calibration = ImageCorrection(f"{self.beam_ref}/correction.csv")
-            self.img.apply_correction(calibration)
-            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
-            self.fig.canvas.draw_idle()
+        correction_path = os.path.join(self.beam_ref, "correction.csv")
+        print(f"DEBUG: self.beam_ref = {self.beam_ref}")
+        if not self.beam_ref or not os.path.exists(self.beam_ref):
+            print(f"[ERROR] BeamRef folder is not set or does not exist: {self.beam_ref}")
+            return
+        correction_path = os.path.abspath(correction_path)
+        if not os.path.exists(correction_path):
+            print(f"Correction file not found: {correction_path}")
+            return
+        try:
+            calibration = ImageCorrection(correction_path)
+        except Exception as e:
+            print(f"Failed to load correction: {e}")
+            return
+        self.img.apply_correction(calibration)
+        self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.fig.canvas.draw_idle()
         self.beam_calibration_applied = True
 
     def click_add_shear(self, val):
@@ -755,10 +764,12 @@ class ShotAligner:
     def click_get_ref_lineout(self, val):
         if self.has_ref_lineout == False: #do nothing if we already have the lineout
             if self.beam_ref != "": #If a beam ref has been passed in
-                try:
-                    ref_data = pd.read_csv(f"{self.beam_ref}/lineouts.csv")
-                except:
-                    raise Exception("Ref data not found")
+                ref_data_path = os.path.join(self.beam_ref, "lineouts.csv")
+                ref_data_path = os.path.abspath(ref_data_path)
+                if not os.path.exists(ref_data_path):
+                    print(f"Reference lineouts file not found: {ref_data_path}")
+                    return  # Or show a GUI message
+                ref_data = pd.read_csv(ref_data_path)
             self.lineout_ax.plot(ref_data.time, ref_data.beam, label = "Reference Beam")
             self.lineout_ax.plot(ref_data.time, ref_data.fiducial, label = "Reference Fiducial")
             self.lineout_ax.legend()
@@ -766,12 +777,23 @@ class ShotAligner:
             self.fig.canvas.draw_idle()
 
     def click_apply_beam_calibration(self, val):
-        if self.beam_calibration_applied == False:
-            # calibration = ImageCorrection(f"{self.beam_ref}/correction.csv")
-            calibration = ImageCorrection(os.path.join(self.beam_ref, "correction.csv"))
-            self.img.apply_correction(calibration)
-            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
-            self.fig.canvas.draw_idle()
+        correction_path = os.path.join(self.beam_ref, "correction.csv")
+        print(f"DEBUG: self.beam_ref = {self.beam_ref}")
+        if not self.beam_ref or not os.path.exists(self.beam_ref):
+            print(f"[ERROR] BeamRef folder is not set or does not exist: {self.beam_ref}")
+            return
+        correction_path = os.path.abspath(correction_path)
+        if not os.path.exists(correction_path):
+            print(f"Correction file not found: {correction_path}")
+            return
+        try:
+            calibration = ImageCorrection(correction_path)
+        except Exception as e:
+            print(f"Failed to load correction: {e}")
+            return
+        self.img.apply_correction(calibration)
+        self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.fig.canvas.draw_idle()
         self.beam_calibration_applied = True
 
     def click_shear(self, val):
