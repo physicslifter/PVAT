@@ -5,7 +5,6 @@ Double check right analyses done for shots/shotrefs/beamrefs/others
 
 Need to decide on naming/organization of files, see def _init_...
 
-Likely, if interactive plot not available, to generate one or offer to show other available data
 """
 
 from VISAR import VISARImage, RefImage
@@ -154,9 +153,7 @@ class AnalysisGUI:
                     btn.label.set_text(folder)
                     btn.color = 'lightblue' if idx == self.selected_folder_index else '0.85'
                     btn.ax.set_visible(True)
-                    # Remove previous callback
                     btn.on_clicked(lambda event: None)
-                    # Set new callback
                     def make_on_click(idx=idx):
                         def on_click(event):
                             self.selected_folder_index = idx
@@ -190,7 +187,6 @@ class AnalysisGUI:
         self.ax.set_title("Search Your Analysis", fontsize=15, fontweight='bold')
         self.ax.text(0.15, 0.9, "Select Analysis Folder", fontsize=12, ha='center', va='center')
 
-    
         update_folder_buttons()
     
         ax_ds = plt.axes([0.55, 0.75, 0.35, 0.1])
@@ -199,20 +195,140 @@ class AnalysisGUI:
         visar_box = TextBox(plt.axes([0.8, 0.35, 0.1, 0.08]), 'Visar (1 or 2)')
         ax_type = plt.axes([0.55, 0.55, 0.35, 0.15])
         type_radio = RadioButtons(ax_type, ['Shot', 'ShotRef', 'BeamRef', 'Other'])
-        btn_search = Button(plt.axes([0.55, 0.2, 0.35, 0.08]), 'Search')
+        btn_search_existing = Button(plt.axes([0.55, 0.2, 0.35, 0.08]), 'Search Existing Analysis')
+        btn_start_new = Button(plt.axes([0.55, 0.1, 0.35, 0.08]), 'Start New Analysis')
+
     
-        self.widgets.extend([ds_radio, shot_box, visar_box, type_radio, btn_search])
+        self.widgets.extend([ds_radio, shot_box, visar_box, type_radio, btn_search_existing, btn_start_new])
     
         self.search_input = {'data_source': 'Real Data', 'shot': '', 'visar': '', 'type': 'Shot'}
-        ds_radio.on_clicked(lambda label: self.search_input.update({'data_source': label}))
+        def on_data_source_selected(label):
+            self.search_input.update({'data_source': label})
+            self.data_source = label
+        ds_radio.on_clicked(on_data_source_selected)
         shot_box.on_submit(lambda text: self.search_input.update({'shot': text.strip()}))
         visar_box.on_submit(lambda text: self.search_input.update({'visar': text.strip()}))
         type_radio.on_clicked(lambda label: self.search_input.update({'type': label}))
     
-        btn_search.on_clicked(lambda event: self.list_search_results())
+        btn_search_existing.on_clicked(lambda event: self.list_search_results())
+        btn_start_new.on_clicked(lambda event: self.start_new_analysis_from_open_saved())
     
         plt.draw()
     
+    def start_new_analysis_from_open_saved(self):
+        if not hasattr(self, 'selected_folder_index') or self.selected_folder_index is None:
+            self.ax.set_title("Please select an analysis folder before starting a new analysis.")
+            plt.draw()
+            return
+        self.show_new_analysis_file_selection()
+
+    def show_new_analysis_file_selection(self):
+        folders = [f for f in os.listdir(self.base_analysis_dir)
+                   if os.path.isdir(os.path.join(self.base_analysis_dir, f))]
+        folders.sort()
+        if not hasattr(self, 'selected_folder_index') or self.selected_folder_index is None:
+            self.ax.set_title("Please select an analysis folder before starting a new analysis.")
+            plt.draw()
+            return
+        selected_folder = folders[self.selected_folder_index]
+        analysis_folder_path = os.path.join(self.base_analysis_dir, selected_folder)
+    
+        shot = self.search_input.get('shot', '').strip()
+        visar = self.search_input.get('visar', '').strip()
+        dtype = self.search_input.get('type', '').strip().lower()
+    
+        try:
+            df = pd.read_csv(self.real_data_csv, dtype=str)
+        except Exception as e:
+            self.ax.set_title(f"Error loading real_info.csv: {e}")
+            plt.draw()
+            return
+    
+        mask = pd.Series([True] * len(df))
+        if shot:
+            mask &= (df['Shot no.'].astype(str).str.strip() == shot)
+        if visar:
+            mask &= (df['VISAR'].astype(str).str.strip() == visar)
+        if dtype:
+            mask &= (df['Type'].astype(str).str.strip().str.lower() == dtype)
+        filtered = df[mask]
+        files = filtered['filepath'].dropna().tolist() if 'filepath' in filtered.columns else []
+        display_names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+    
+        self.clear_widgets()
+        self.file_buttons = []
+        self.selected_file = None
+        self.selected_type = dtype
+    
+        if not files:
+            self.ax.set_title("No files found for this selection.")
+            btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+            btn_back.on_clicked(lambda event: self.prompt_open_saved())
+            self.widgets.append(btn_back)
+            plt.draw()
+            return
+    
+        self.ax.set_title("Select a file to start a new analysis:")
+        n_files = len(files)
+        n_cols = 2
+        n_rows = int(np.ceil(n_files / n_cols))
+        button_height = 0.4 / n_rows
+        button_width = 0.4
+
+        def make_on_click(f, idx):
+            def on_click(event):
+                self.selected_file = f
+                self.launch_new_analysis_in_selected_folder(selected_folder, f, dtype)
+            return on_click
+    
+        for i, (f, name) in enumerate(zip(files, display_names)):
+            col = i % n_cols
+            row = i // n_cols
+            left = 0.05 + col * (button_width + 0.05)
+            bottom = 0.7 - (row + 1) * button_height
+            ax_btn = plt.axes([left, bottom, button_width, button_height*0.9])
+            btn = Button(ax_btn, name, color='0.85')
+            btn.on_clicked(make_on_click(f, i))
+            self.widgets.append(btn)
+            self.file_buttons.append((btn, ax_btn, f, dtype))
+    
+        btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+        btn_back.on_clicked(lambda event: self.prompt_open_saved())
+        self.widgets.append(btn_back)
+        plt.draw()
+
+    def launch_new_analysis_in_selected_folder(self, selected_folder, filename, filetype):
+        self.analysis_manager.create_or_open_analysis(selected_folder)
+        try:
+            info_row = self.analysis_manager.extract_info_from_csv(filename, self.real_data_csv)
+        except Exception as e:
+            self.ax.set_title(f"Could not extract info: {e}")
+            plt.draw()
+            return
+    
+        if filetype.lower() in ["shot", "shotref"]:
+            self._pending_info_row = info_row
+            self._pending_selected_folder = selected_folder
+            self._pending_filename = filename
+            self._pending_filetype = filetype
+            self.data_source = self.search_input.get('data_source', 'Real Data')
+            self.prompt_select_beamref(filetype, filename, filetype)
+            return
+    
+        try:
+            instance_folder = self.analysis_manager.save_analysis_instance(
+                data_type=info_row["Type"] if info_row["Type"] else filetype,
+                base_name=info_row["Name"] if info_row["Name"] else os.path.splitext(os.path.basename(filename))[0],
+                info_row=info_row,
+                notes=""
+            )
+        except Exception as e:
+            self.ax.set_title(f"Failed to save analysis instance: {e}")
+            plt.draw()
+            return
+    
+        self.launch_interactive_plot(instance_folder, info_row["Type"] if info_row["Type"] else filetype)
+        
     def list_folder_files(self, folder):
         self.clear_widgets()
         folder_path = os.path.join(self.base_analysis_dir, folder)
@@ -248,8 +364,6 @@ class AnalysisGUI:
             self.ax.set_title("No info.xlsx found in Analysis folder.")
             plt.draw()
             return
-        # print("Columns:", df.columns.tolist())
-        # print("First few rows:\n", df.head())
         print("Search input:", self.search_input)
         
         if 'Analysis_Path' in df.columns:
@@ -328,25 +442,25 @@ class AnalysisGUI:
                 data_type = self.selected_file_row.get('Type')
                 base_name = self.selected_file_row.get('Name')
                 analysis_folder = self.selected_file_row.get('AnalysisFolder')
-                print(f"Continue latest: data_type={data_type}, base_name={base_name}, analysis_folder={analysis_folder}")
                 self.analysis_manager.create_or_open_analysis(analysis_folder)
                 latest_version = self.analysis_manager.get_latest_version(data_type, base_name)
-                print(f"Latest version: {latest_version}")
                 if latest_version:
-                    self.launch_interactive_plot_for_version(data_type, base_name, latest_version)
+                    instance_folder = os.path.join(
+                        self.analysis_manager.analysis_path, data_type, base_name, latest_version
+                    )
+                    self.launch_interactive_plot(instance_folder, data_type)
                 else:
                     self.ax.set_title("No versions found for this analysis.")
                     plt.draw()
             else:
                 self.ax.set_title("Please select a file first.")
                 plt.draw()
-    
+        
         def start_new(event):
             if self.selected_file_row is not None:
                 data_type = self.selected_file_row.get('Type')
                 base_name = self.selected_file_row.get('Name')
                 analysis_folder = self.selected_file_row.get('AnalysisFolder')
-                print(f"Start new: data_type={data_type}, base_name={base_name}, analysis_folder={analysis_folder}")
                 self.analysis_manager.create_or_open_analysis(analysis_folder)
                 try:
                     instance_folder = self.analysis_manager.duplicate_version(data_type, base_name)
@@ -510,24 +624,189 @@ class AnalysisGUI:
                 bottom = 0.7 - (row + 1) * button_height
                 ax_btn = plt.axes([left, bottom, button_width, button_height*0.9])
                 btn = Button(ax_btn, f, color='0.85')
-                btn.on_clicked(make_on_click(f, t, ax_btn, i))
+                def on_click(event, f=f, t=t):
+                    if t.lower() == "beamref":
+                        self.launch_analysis(f, t)
+                    else:
+                        self.prompt_select_beamref(t, f, t)
+                btn.on_clicked(on_click)
                 self.widgets.append(btn)
                 self.file_buttons.append((btn, ax_btn, f, t))
-    
-            btn_launch = Button(plt.axes([0.35, 0.05, 0.3, 0.05]), 'Launch Analysis')
-            def launch(event):
-                if self.selected_file:
-                    self.launch_analysis(self.selected_file, self.selected_type)
-                else:
-                    self.ax.set_title("Please select a file first.")
-                    plt.draw()
-            btn_launch.on_clicked(launch)
-            self.widgets.append(btn_launch)
     
         btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
         btn_back.on_clicked(lambda event: self.prompt_real_data_inputs())
         self.widgets.append(btn_back)
         plt.draw()
+        
+    def get_available_beamrefs(self):
+        """
+        Returns a list of (filepath, display_name) tuples for available BeamRefs,
+        filtered by self.data_source (Real Data/Synthetic Data).
+        """
+        if self.data_source == "Real Data":
+            csv_path = self.real_data_csv
+            df = pd.read_csv(csv_path, dtype=str)
+            df = df[df['Type'].str.lower() == 'beamref']
+            files = df['filepath'].dropna().tolist()
+            display_names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+            return list(zip(files, display_names))
+        else:
+            df = pd.read_csv(self.synthetic_data_csv, dtype=str)
+            df.columns = [col.lower() for col in df.columns]
+            df = df[df['type'].str.lower() == 'beamref']
+            files = df['filepath'].dropna().tolist() if 'filepath' in df.columns else []
+            display_names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+            return list(zip(files, display_names))
+            
+    def prompt_select_beamref(self, analysis_type, selected_file, selected_type):
+        self.clear_widgets()
+        beamrefs = self.get_available_beamrefs()
+        if not beamrefs:
+            self.ax.set_title("No BeamRefs found for this data source.")
+            btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+            btn_back.on_clicked(lambda event: self.search_real_data_files())
+            self.widgets.append(btn_back)
+            plt.draw()
+            return
+    
+        self.ax.set_title("Select a BeamRef to use with this analysis:")
+        y0 = 0.75
+        button_height = 0.07
+        self.selected_beamref_idx = None
+        self.beamref_buttons = []
+    
+        def select_beamref(idx):
+            self.selected_beamref_idx = idx
+            for j, (btn, ax, _) in enumerate(self.beamref_buttons):
+                ax.clear()
+                color = 'lightblue' if j == idx else '0.85'
+                new_btn = Button(ax, beamrefs[j][1], color=color)
+                new_btn.on_clicked(lambda event, idx=j: select_beamref(idx))
+                self.beamref_buttons[j] = (new_btn, ax, beamrefs[j][0])
+            self.fig.canvas.draw_idle()
+    
+        for i, (filepath, display_name) in enumerate(beamrefs):
+            ax_btn = plt.axes([0.2, y0, 0.6, button_height * 0.9])
+            btn = Button(ax_btn, display_name, color='0.85')
+            btn.on_clicked(lambda event, idx=i: select_beamref(idx))
+            self.widgets.append(btn)
+            self.beamref_buttons.append((btn, ax_btn, filepath))
+            y0 -= button_height
+            if y0 < 0.1:
+                break
+    
+        btn_launch = Button(plt.axes([0.35, 0.05, 0.3, 0.05]), 'Launch Analysis')
+        def launch(event):
+            if self.selected_beamref_idx is not None:
+                beamref_file = self.beamref_buttons[self.selected_beamref_idx][2]
+                self.launch_analysis_with_beamref(selected_file, selected_type, beamref_file)
+            else:
+                self.ax.set_title("Please select a BeamRef first.")
+                plt.draw()
+        btn_launch.on_clicked(launch)
+        self.widgets.append(btn_launch)
+    
+        btn_back = Button(plt.axes([0.7, 0.1, 0.2, 0.08]), 'Back')
+        btn_back.on_clicked(lambda event: self.search_real_data_files())
+        self.widgets.append(btn_back)
+        plt.draw()
+        
+    def launch_analysis_with_beamref(self, filename, filetype, beamref_file):
+        """
+        Launch the interactive plot for Shot or ShotRef, passing the selected BeamRef.
+        Handles both "Start New" and "Start Fresh" flows.
+        """
+        self.clear_widgets()
+        csv_path = self.real_data_csv if self.data_source == "Real Data" else self.synthetic_data_csv
+    
+        if hasattr(self, "_pending_info_row"):
+            info_row = self._pending_info_row
+            selected_folder = self._pending_selected_folder
+            from AnalysisManager import get_next_version
+            beamref_name = os.path.splitext(os.path.basename(beamref_file))[0]
+            beamref_parent = os.path.join(self.base_analysis_dir, selected_folder, "BeamRef", beamref_name)
+            os.makedirs(beamref_parent, exist_ok=True)
+            version = get_next_version(beamref_parent, beamref_name)
+            beamref_instance_folder = os.path.join(beamref_parent, f"{beamref_name}_{version}")
+            os.makedirs(beamref_instance_folder, exist_ok=True)
+    
+            info_xlsx_path = os.path.join(beamref_instance_folder, "info.xlsx")
+            if not os.path.exists(info_xlsx_path):
+                beamref_df = pd.read_csv(self.real_data_csv, dtype=str)
+                beamref_row = beamref_df[beamref_df['filepath'] == beamref_file]
+                if not beamref_row.empty:
+                    beamref_info = beamref_row.iloc[0].to_dict()
+                    pd.DataFrame([beamref_info]).to_excel(info_xlsx_path, index=False)
+                else:
+                    pd.DataFrame([{}]).to_excel(info_xlsx_path, index=False)
+    
+            info_row["beam_ref_path"] = os.path.abspath(beamref_instance_folder)
+            print("Saving beam_ref_path as:", info_row["beam_ref_path"])
+    
+            self.analysis_manager.create_or_open_analysis(selected_folder)
+            try:
+                instance_folder = self.analysis_manager.save_analysis_instance(
+                    data_type=info_row.get("Type", filetype),
+                    base_name=info_row.get("Name") or os.path.splitext(os.path.basename(filename))[0],
+                    info_row=info_row,
+                    notes=""
+                )
+            except Exception as e:
+                self.ax.set_title(f"Failed to save analysis instance: {e}")
+                plt.draw()
+                return
+    
+            self.launch_interactive_plot(instance_folder, info_row.get("Type") or filetype, beamref_file=beamref_instance_folder)
+    
+            del self._pending_info_row
+            del self._pending_selected_folder
+            del self._pending_filename
+            del self._pending_filetype
+            return
+    
+        if not self.analysis_name:
+            self.ax.set_title("No analysis name selected.")
+            plt.draw()
+            return
+    
+        self.analysis_manager.create_or_open_analysis(self.analysis_name)
+    
+        try:
+            info_row = self.analysis_manager.extract_info_from_csv(filename, csv_path)
+        except Exception as e:
+            self.ax.set_title(f"Could not extract info: {e}")
+            plt.draw()
+            return
+    
+        from AnalysisManager import get_next_version
+        beamref_name = os.path.splitext(os.path.basename(beamref_file))[0]
+        beamref_parent = os.path.join(self.analysis_folder, "BeamRef", beamref_name)
+        os.makedirs(beamref_parent, exist_ok=True)
+        version = get_next_version(beamref_parent, beamref_name)
+        beamref_instance_folder = os.path.join(beamref_parent, f"{beamref_name}_{version}")
+        os.makedirs(beamref_instance_folder, exist_ok=True)
+    
+        info_xlsx_path = os.path.join(beamref_instance_folder, "info.xlsx")
+        if not os.path.exists(info_xlsx_path):
+            beamref_df = pd.read_csv(self.real_data_csv, dtype=str)
+            beamref_row = beamref_df[beamref_df['filepath'] == beamref_file]
+            if not beamref_row.empty:
+                beamref_info = beamref_row.iloc[0].to_dict()
+                pd.DataFrame([beamref_info]).to_excel(info_xlsx_path, index=False)
+            else:
+                pd.DataFrame([{}]).to_excel(info_xlsx_path, index=False)
+    
+        info_row["beam_ref_path"] = os.path.abspath(beamref_instance_folder)
+        print("Saving beam_ref_path as:", info_row["beam_ref_path"])
+    
+        instance_folder = self.analysis_manager.save_analysis_instance(
+            data_type=info_row.get("Type", filetype),
+            base_name=info_row.get("Name") or os.path.splitext(os.path.basename(filename))[0],
+            info_row=info_row,
+            notes=""
+        )
+    
+        self.launch_interactive_plot(instance_folder, info_row.get("Type") or filetype, beamref_file=beamref_instance_folder)
 
     def launch_analysis(self, filename, filetype):
         self.clear_widgets()
@@ -561,13 +840,10 @@ class AnalysisGUI:
             plt.draw()
             return
     
-        self.ax.text(0.5, 0.5, f"Analysis at:\n{instance_folder}", fontsize=12, ha='center', va='center')
-        plt.draw()
-        
         self.launch_interactive_plot(instance_folder, info_row["Type"] if info_row["Type"] else filetype)
 
         
-    def launch_interactive_plot(self, instance_folder, analysis_type):
+    def launch_interactive_plot(self, instance_folder, analysis_type, beamref_file=None):
         """
         Launch the correct interactive plot for the analysis_type.
         """
@@ -605,13 +881,17 @@ class AnalysisGUI:
             aligner.show_plot()
         elif analysis_type.lower() == "shot":
             img = VISARImage(fname=fname, sweep_speed=sweep_speed, slit_size=slit_size)
-            aligner = ShotAligner(img)
+            aligner = ShotAligner(img, go_to_analysis_callback=self.launch_analysis_plot_from_shot)
             aligner.set_folder(instance_folder)
+            if beamref_file is not None:
+                aligner.set_beam_ref_folder(beamref_file)
             aligner.show_plot()
         elif analysis_type.lower() == "shotref":
             img = VISARImage(fname=fname, sweep_speed=sweep_speed, slit_size=slit_size)
             aligner = ShotRefAligner(img)
             aligner.set_folder(instance_folder)
+            if beamref_file is not None:
+                aligner.set_beam_ref_folder(beamref_file)
             aligner.show_plot()
         else:
             self.ax.set_title(f"Unknown analysis type: {analysis_type}")
@@ -625,8 +905,13 @@ class AnalysisGUI:
             plt.draw()
             return
     
-        filtered = df[df['type'] == analysis_type]
-        files = filtered['tif_file'].tolist() if 'tif_file' in filtered.columns else []
+        filtered = df[df['type'].str.lower() == analysis_type.lower()]
+        if 'Filepath' in filtered.columns:
+            files = filtered['Filepath'].tolist()
+        elif 'filepath' in filtered.columns:
+            files = filtered['filepath'].tolist()
+        else:
+            files = []
         types = filtered['type'].tolist() if 'type' in filtered.columns else []
     
         self.clear_widgets()
@@ -673,7 +958,10 @@ class AnalysisGUI:
         btn_launch = Button(plt.axes([0.35, 0.05, 0.3, 0.05]), 'Launch Analysis')
         def launch(event):
             if self.selected_file:
-                self.launch_analysis(self.selected_file, self.selected_type)
+                if self.selected_type.lower() == "beamref":
+                    self.launch_analysis(self.selected_file, self.selected_type)
+                else:
+                    self.prompt_select_beamref(self.selected_type, self.selected_file, self.selected_type)
             else:
                 self.ax.set_title("Please select a file first.")
                 plt.draw()
@@ -685,6 +973,11 @@ class AnalysisGUI:
         self.widgets.append(btn_back)
     
         plt.draw()
+    
+    def launch_analysis_plot_from_shot(self, shot_folder):
+        from InteractivePlots import AnalysisPlot
+        analysis_plot = AnalysisPlot(shot_folder)
+        analysis_plot.show_plot()
 
 if __name__ == "__main__":
     AnalysisGUI()
