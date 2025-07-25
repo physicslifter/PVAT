@@ -14,8 +14,8 @@ import re
 from datetime import datetime
 
 INFO_COLS = [
-    "Name", "Shot no.", "Visar", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", "slit_size", "etalon",
-    "Analysis_Path", "Date_Analyzed", "Notes"
+    "Name", "Shot no.", "Visar", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", 
+    "slit_size", "etalon", "beam_ref_path", "Analysis_Path", "Date_Analyzed", "Notes"
 ]
 
 def ensure_info_xlsx(path):
@@ -111,6 +111,7 @@ class BeamAlignmentAnalysis:
         self.aligner = BeamAligner(self.ref)
         self.aligner.set_lineout_save_name()
 
+
 class AnalysisManager:
     def __init__(self, base_directory="Analysis"):
         self.base_directory = base_directory
@@ -172,7 +173,7 @@ class AnalysisManager:
             "Shot no.": shot_no,
             "Visar": visar,
             "Type": file_type,
-            "Filename": base_noext, #safe_str(row.get("Filename", tif_file)),
+            "Filename": base_noext,
             "Filepath": safe_str(row.get("filepath", tif_file)),
             "sweep_speed": safe_float(row.get("sweep_time", ""), default=20),
             "slit_size": safe_float(row.get("slit_size", ""), default=500),
@@ -182,13 +183,7 @@ class AnalysisManager:
         info_row["DataSource"] = "Synthetic Data" if "synthetic" in csv_path.lower() else "Real Data"
         return info_row
 
-    def save_analysis_instance(
-        self,
-        data_type,
-        base_name,
-        info_row,
-        notes=""
-    ):
+    def save_analysis_instance(self, data_type, base_name, info_row, notes=""):
         """
         Create a new versioned analysis instance and update all info files.
         Returns the instance folder path.
@@ -203,11 +198,17 @@ class AnalysisManager:
         instance_folder = os.path.join(base_folder, f"{safe_str(base_name)}_{version}")
         os.makedirs(instance_folder, exist_ok=True)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        row = {k: safe_str(v) for k, v in info_row.items()}  
-        shot_no, visar = extract_shot_visar(row.get("Name", ""))
+        row = {k: str(v) for k, v in info_row.items()}
+
+        if str(data_type).lower() in ["shot", "shotref"]:
+            if "beam_ref_path" not in row or not row["beam_ref_path"]:
+                raise ValueError("beam_ref must be set for Shot/ShotRef analyses.")
+        elif str(data_type).lower() == "beamref":
+            row["beam_ref_path"] = ""  #maybe add the delete column here...
+        else:
+            row["beam_ref_path"] = ""
+
         row.update({
-            # "Shot no.": shot_no,
-            # "Visar": visar,
             "Analysis_Path": os.path.abspath(instance_folder),
             "Date_Analyzed": now,
             "Notes": notes
@@ -263,19 +264,3 @@ class AnalysisManager:
         analysis_path = os.path.join(self.base_directory, analysis_name)
         if os.path.exists(analysis_path):
             shutil.rmtree(analysis_path)
-
-
-# Example:
-# if __name__ == "__main__":
-#     am = AnalysisManager()
-#     am.create_or_open_analysis("Analysis1")
-#     tif_file = "0404_1525_Shot38_Visar2_ref.tif"
-#     csv_path = "data/real_info.csv"
-#     info_row = am.extract_info_from_csv(tif_file, csv_path)
-#     folder = am.save_analysis_instance(
-#         data_type=info_row["Type"] if info_row["Type"] else "Shot",
-#         base_name=info_row["Name"] if info_row["Name"] else "Unknown",
-#         info_row=info_row
-#     )
-#     print(f"Saved new analysis instance at: {folder}")
-#     print("Current versions:", am.list_versions(info_row["Type"], info_row["Name"]))
