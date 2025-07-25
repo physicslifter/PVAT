@@ -879,19 +879,20 @@ class AnalysisGUI:
             aligner.set_lineout_save_name(os.path.join(instance_folder, "lineouts.csv"))
             aligner.set_correction_save_name(os.path.join(instance_folder, "correction.csv"))
             aligner.show_plot()
-        elif analysis_type.lower() == "shot":
+        elif analysis_type.lower() in ("shot", "shotref"):
             img = VISARImage(fname=fname, sweep_speed=sweep_speed, slit_size=slit_size)
-            aligner = ShotAligner(img, go_to_analysis_callback=self.launch_analysis_plot_from_shot)
+            aligner_cls = ShotAligner if analysis_type.lower() == "shot" else ShotRefAligner
+            aligner_kwargs = {}
+            if analysis_type.lower() == "shot":
+                aligner_kwargs["go_to_analysis_callback"] = self.launch_analysis_plot_from_shot
+            aligner = aligner_cls(img, **aligner_kwargs)
             aligner.set_folder(instance_folder)
-            if beamref_file is not None:
-                aligner.set_beam_ref_folder(beamref_file)
-            aligner.show_plot()
-        elif analysis_type.lower() == "shotref":
-            img = VISARImage(fname=fname, sweep_speed=sweep_speed, slit_size=slit_size)
-            aligner = ShotRefAligner(img)
-            aligner.set_folder(instance_folder)
-            if beamref_file is not None:
-                aligner.set_beam_ref_folder(beamref_file)
+        
+            beamref_path = beamref_file
+            if beamref_path is None:
+                beamref_path = info.get("beam_ref_path", None)
+            if beamref_path:
+                aligner.set_beam_ref_folder(beamref_path)
             aligner.show_plot()
         else:
             self.ax.set_title(f"Unknown analysis type: {analysis_type}")
