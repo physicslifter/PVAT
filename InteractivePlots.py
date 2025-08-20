@@ -775,6 +775,11 @@ class ShotAligner:
         self.breakout_uncertainty_ax = self.fig.add_axes([0.91, 0.15, 0.03, 0.23])
         self.breakout_uncertainty_slider = Slider(self.breakout_uncertainty_ax, "$\sigma$", valmin = 0, valmax = 2, valinit = 0, orientation = "vertical")
 
+        # Add "Go to Analysis" Button
+        self.go_to_analysis_ax = self.fig.add_axes([0.85, 0.07, 0.13, 0.05])
+        self.go_to_analysis_button = Button(self.go_to_analysis_ax, "Go to Analysis", color="lightgreen")
+        self.go_to_analysis_button.on_clicked(self.click_go_to_analysis)
+
     def plot_initial_lineouts(self):
         """
         Plots lineouts and fiducial bounds
@@ -918,6 +923,15 @@ class ShotAligner:
                              "sweep_speed": [self.img.sweep_speed],
                              "slit_size": [self.img.slit_size]})
         info.to_excel(f"{self.folder}/info.xlsx", index=False)
+
+    def click_go_to_analysis(self, event):
+        folder = self.folder
+        callback = self.go_to_analysis_callback
+        assert self.fig is not None, "Figure not initialized!"
+        plt.close(self.fig)
+        if callback and folder:
+            import threading
+            threading.Timer(0.1, lambda: callback(folder)).start()
 
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
