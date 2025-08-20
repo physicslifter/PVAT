@@ -322,6 +322,7 @@ class BeamAligner:
         Let's user perform a manual chop by hand
         This is useful if the program has trouble fitting the peaks
         """
+        pass
 
     def get_lineout_save_name(self):
         if type(self.timing_save_name) == type(None):
@@ -612,7 +613,12 @@ class ShotRefAligner:
         fiducial_lineout = fiducial_lineout/fiducial_lineout.max()
         df = pd.DataFrame({"time":self.img.time, "fiducial": fiducial_lineout})
         df.to_csv(f"{self.folder}/time.csv")
-        info = pd.DataFrame({"beam_ref":[self.beam_ref], "shear": [self.sheared_angle]})
+        info = pd.DataFrame(
+            {"beam_ref":[self.beam_ref], 
+            "shear": [self.sheared_angle],
+            "fname": [self.img.fname]
+            }
+            )
         info.to_csv(f"{self.folder}/info.csv", index=False)
 
     def set_sliders(self):
@@ -1049,26 +1055,25 @@ class AnalysisPlot:
     def open_shot(self):
         if not os.path.exists(self.shot_folder):
             raise Exception("Folder path not valid")
-        
         try:
             self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
             self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
         except:
             raise Exception(f"Shot folder {self.shot_folder} could not be read")
-        ref_folder = self.info["shot_ref"].values[0]
-        if not ref_folder or str(ref_folder).lower() in ['nan', '', 'none']:
+        self.ref_folder = self.info["shot_ref"].values[0]
+        if not self.ref_folder or str(self.ref_folder).lower() in ['nan', '', 'none']:
             raise Exception("ShotRef folder not set for this analysis. Please ensure the reference is selected and available.")
-        beam_folder = self.info["beam_ref"].values[0]
+        self.beam_folder = self.info["beam_ref"].values[0]
         fname = self.info["fname"].values[0]
-        sweep_speed = self.info["sweep_speed"].values[0]
-        slit_size = self.info["slit_size"].values[0]
-        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
-        shear_angle = ref_info["shear"].values[0]
-        correction = ImageCorrection(f"{beam_folder}/correction.csv")
-        self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
+        self.sweep_speed = self.info["sweep_speed"].values[0]
+        self.slit_size = self.info["slit_size"].values[0]
+        self.ref_info = pd.read_csv(f"{self.ref_folder}/info.csv")
+        self.shear_angle = self.ref_info["shear"].values[0]
+        self.correction = ImageCorrection(f"{self.beam_folder}/correction.csv")
+        self.img = VISARImage(fname, sweep_speed = self.sweep_speed, slit_size = self.slit_size)
         print("\n\n\n====\n\n\n")
-        self.img.apply_correction(correction) #apply beam correction
-        self.img.shear_data(shear_angle) #apply shear from shot ref
+        self.img.apply_correction(self.correction) #apply beam correction
+        self.img.shear_data(self.shear_angle) #apply shear from shot ref
         self.img.align_time(self.time.time)
         
     def initialize_plot(self):
@@ -1143,6 +1148,10 @@ class AnalysisPlot:
         self.phase_ax.set_title("Phase")
         self.fourier_lineout_ax.set_title("Fourier Transform")
         self.velocity_lineout_ax.set_title("Velocity")
+
+        #Background Ref normalization button
+        self.ref_norm_ax = self.fig.add_axes([0.66, 0.3, 0.2, 0.07])
+        self.ref_norm_button = Button(self.ref_norm_ax, "Normalize\n to Ref", color = "aquamarine")
 
     def fft_plot_zoom_update(self, ax_instance):
         valmin, valmax = ax_instance.get_xlim()
@@ -1410,6 +1419,43 @@ class AnalysisPlot:
         self.fig.canvas.draw_idle()
         self.vpf_applied = True
 
+    def click_ref_norm(self, val):
+        """
+        normalize to reference
+        """
+        #get ref image
+        self.ref_img = VISARImage(self.ref_info["fname"].values[0], sweep_speed = self.sweep_speed, slit_size = self.slit_size)
+
+        #apply corrections
+        self.ref_img.apply_correction(self.correction) #apply beam correction
+        self.ref_img.shear_data(self.shear_angle) #apply shear from shot ref
+        self.ref_img.align_time(self.time.time)
+
+        #get reference phase
+        self.ref_phase = self.ref_img.get_phase_igor(
+            x_bounds=(self.x_slider.val[0],self.x_slider.val[1]),
+            y_bounds=(self.y_slider.val[0], self.y_slider.val[1]),
+            fband=(self.fft_slider.val[0], self.fft_slider.val[1]),
+            angle_deg=0.0,          # or your shear/tilt if not already corrected upstream
+            use_hann=True,
+            vpf=1)
+
+        #subtract reference phase from shot phase
+        self.phase = self.phase - self.ref_phase
+
+        #plot the new phase
+        self.phase_ax.clear()
+        self.phase_ax.set_title("Phase")
+        X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
+        vmin = int((self.velo_slider.val[0] - self.y_slider.val[0])/self.img.space_per_pixel)
+        vmax = int((self.velo_slider.val[1] - self.y_slider.val[0])/self.img.space_per_pixel)
+        self.velocity = self.phase[vmin:vmax, :].mean(axis = 0)
+        self.phase_ax.pcolormesh(X, Y, self.phase, cmap = "viridis")
+        self.velo[0].set_ydata(self.velocity)
+        self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
+        self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
+        self.fig.canvas.draw_idle()
+
     def set_sliders(self):
         self.x_slider.on_changed(self.update_x_slider)
         self.y_slider.on_changed(self.update_y_slider)
@@ -1425,6 +1471,7 @@ class AnalysisPlot:
         self.median_filter_button.on_clicked(self.click_median_filter)
         self.zero_phase_button.on_clicked(self.click_zero_phase)
         self.vpf_button.on_clicked(self.click_vpf)
+        self.ref_norm_button.on_clicked(self.click_ref_norm)
 
     def show_plot(self):
         self.initialize_plot()

@@ -262,7 +262,7 @@ class VISARImage:
                     shift, end_pad = np.abs(end_pad), np.abs(shift)
                 sheared_slice = np.pad(slice, (shift, end_pad), "constant", constant_values = (0, 0))
                 sheared_slices.append(sheared_slice)
-        self.data = np.vstack(sheared_slices).T
+            self.data = np.vstack(sheared_slices).T
         if angle < 0:
             new_min_space = self.space.min() + max_shift*self.space_per_pixel
             self.space = np.linspace(new_min_space, self.space.max(), len(self.space) - max_shift)
