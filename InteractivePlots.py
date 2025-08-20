@@ -28,11 +28,11 @@ def launch_beamref_plot(fname, folder, sweep_speed, slit_size):
     aligner.show_plot()
 
 def get_beamref_params(beamref_folder, real_data_csv):
-    info_path = os.path.join(beamref_folder, "info.xlsx")
+    info_path = os.path.join(beamref_folder, "info.csv")
     fname, sweep_speed, slit_size = None, None, None
 
     if os.path.exists(info_path):
-        info = pd.read_excel(info_path)
+        info = pd.read_csv(info_path)
         if "Filepath" in info.columns:
             fname = info.at[0, "Filepath"]
         elif "filepath" in info.columns:
@@ -613,7 +613,7 @@ class ShotRefAligner:
         df = pd.DataFrame({"time":self.img.time, "fiducial": fiducial_lineout})
         df.to_csv(f"{self.folder}/time.csv")
         info = pd.DataFrame({"beam_ref":[self.beam_ref], "shear": [self.sheared_angle]})
-        info.to_excel(f"{self.folder}/info.xlsx", index=False)
+        info.to_csv(f"{self.folder}/info.csv", index=False)
 
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
@@ -679,12 +679,12 @@ class ShotRefAligner:
         plt.show()
     
     def open_beamref_interactive_plot(self):
-        info_path = os.path.join(self.folder, "info.xlsx")
+        info_path = os.path.join(self.folder, "info.csv")
         if not os.path.exists(info_path):
             print("No info file found.")
             return
     
-        info_df = pd.read_excel(info_path)
+        info_df = pd.read_csv(info_path)
         if 'beam_ref_path' not in info_df.columns:
             print("No 'beam_ref_path' column found in info.xlsx. Please associate a BeamRef with this analysis.")
             return
@@ -885,7 +885,7 @@ class ShotAligner:
         self.beam_calibration_applied = True
 
     def click_shear(self, val):
-        info = pd.read_excel(f"{self.shot_ref}/info.xlsx")
+        info = pd.read_csv(f"{self.shot_ref}/info.csv")
         self.img.shear_data(angle = info["shear"].values[0])
         self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
         self.fig.canvas.draw_idle()
@@ -922,7 +922,7 @@ class ShotAligner:
                              "fname": [self.img.fname],
                              "sweep_speed": [self.img.sweep_speed],
                              "slit_size": [self.img.slit_size]})
-        info.to_excel(f"{self.folder}/info.xlsx", index=False)
+        info.to_csv(f"{self.folder}/info.csv", index=False)
 
     def click_go_to_analysis(self, event):
         folder = self.folder
@@ -946,7 +946,7 @@ class ShotAligner:
         self.beam_calibration_button.on_clicked(self.click_apply_beam_calibration)
         self.center_time_button.on_clicked(self.click_center_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
-        self.edit_beamref_button.on_clicked(self.click_edit_beamref)
+        #self.edit_beamref_button.on_clicked(self.click_edit_beamref)
         # self.go_to_analysis_button.on_clicked(self.click_go_to_analysis)
 
     def get_state_dict(self):
@@ -1000,12 +1000,12 @@ class ShotAligner:
         import os
         import pandas as pd
     
-        info_path = os.path.join(self.folder, "info.xlsx")
+        info_path = os.path.join(self.folder, "info.csv")
         if not os.path.exists(info_path):
             print("No info file found.")
             return
     
-        info_df = pd.read_excel(info_path)
+        info_df = pd.read_csv(info_path)
         if 'beam_ref_path' not in info_df.columns:
             print("No 'beam_ref_path' column found in info.xlsx. Please associate a BeamRef with this analysis.")
             return
@@ -1052,9 +1052,9 @@ class AnalysisPlot:
         
         try:
             self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
-            self.info = pd.read_excel(f"{self.shot_folder}/info.xlsx")
+            self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
         except:
-            raise Exception("Shot folder could not be read")
+            raise Exception(f"Shot folder {self.shot_folder} could not be read")
         ref_folder = self.info["shot_ref"].values[0]
         if not ref_folder or str(ref_folder).lower() in ['nan', '', 'none']:
             raise Exception("ShotRef folder not set for this analysis. Please ensure the reference is selected and available.")
@@ -1062,7 +1062,7 @@ class AnalysisPlot:
         fname = self.info["fname"].values[0]
         sweep_speed = self.info["sweep_speed"].values[0]
         slit_size = self.info["slit_size"].values[0]
-        ref_info = pd.read_excel(f"{ref_folder}/info.xlsx")
+        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
         shear_angle = ref_info["shear"].values[0]
         correction = ImageCorrection(f"{beam_folder}/correction.csv")
         self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)
