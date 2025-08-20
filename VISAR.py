@@ -8,6 +8,8 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import shift
 from tifffile import imsave
 import shutil
+from math import tan, radians
+from scipy.ndimage import map_coordinates
 
 def gaussian(x, a, b, c, background):
   return a * np.exp(-(x - b)**2 / (2 * c**2)) + background
@@ -62,6 +64,8 @@ class ImageCorrection:
                 raise Exception("Nowhere to save the file")
             else:
                 fname = self.fname
+        else:
+            self.fname = fname
         if fname.split(".")[-1].lower() != "csv":
             raise Exception("Must save as a csv file")
         data = pd.DataFrame({"space": self.space, "time_shift":self.time_shift})
@@ -84,7 +88,7 @@ class ImageCorrection:
             if flip == True:
                 ax.plot(self.time_shift, self.space)
         else:
-            plt.plot(self.space, self.time)
+            plt.plot(self.space, self.time_shift)
             name = self.fname.split("/")[-1].split(".")[0]
             plt.title(f"Correction: {name}")
             plt.xlabel("Dist. from slit bottom")
@@ -94,7 +98,7 @@ class VISARImage:
     """
     A simpler & more general class for the VISAR Image
     """
-    def __init__(self, fname:str=None, data:np.array=None, sweep_speed:int=20, slit_size:int=500):
+    def __init__(self, fname:str=None, data:np.array=None, sweep_speed:int=20, slit_size:int=None):
         self.fname = fname
         self.data = data
         self.sweep_speed = sweep_speed
@@ -129,6 +133,7 @@ class VISARImage:
 
     def align_space(self):
         self.space = np.linspace(0, self.slit_size, self.data.shape[0])
+        #self.space = np.arange(self.data.shape[0])
         self.space_aligned = True
         self.space_per_pixel = self.space[1] - self.space[0]
 
@@ -331,6 +336,95 @@ class VISARImage:
         self.time = np.linspace(new_min, new_max, self.data.shape[1])
         if negative == True: #flip correction back if we've flipped it
             correction.get_inverse()
+
+    def get_phase_igor(
+        self,
+        x_bounds,            # (t_min, t_max)  in same units as self.time
+        y_bounds,            # (s_min, s_max)  in same units as self.space
+        fband,               # (f_min, f_max) cycles/sample along y (0..0.5)
+        *,
+        angle_deg: float = 0.0,
+        use_hann: bool = True,
+        vpf: float = 1.0,
+        return_intermediates: bool = False,
+    ):
+        """
+        IGOR-style phase extraction:
+          - per-column DC removal
+          - optional Hann window
+          - FFT (along y) -> keep ONLY the positive-frequency band
+          - IFFT to complex analytic signal
+          - unwrap phase along y
+          - complex ratio of neighboring columns -> Δphi_x
+          - cumulative sum across x
+          - final scale by vpf/(2π)
+        Returns: phase array shaped [y, x].
+        """
+
+        # --- convert physical bounds -> pixel indices
+        tmin, tmax = x_bounds
+        smin, smax = y_bounds
+        xmin = max(0, int((tmin - self.time.min())/self.time_resolution))
+        xmax = min(self.data.shape[1]-1, int((tmax - self.time.min())/self.time_resolution))
+        ymin = max(0, int((smin - self.space.min())/self.space_per_pixel))
+        ymax = min(self.data.shape[0]-1, int((smax - self.space.min())/self.space_per_pixel))
+
+        nx = xmax - xmin + 1
+        ny = ymax - ymin + 1
+
+        unit_phasor = np.zeros((nx, ny), dtype=np.complex128)
+        angle = radians(angle_deg)
+
+        # frequency vector for this ROI height (cycles/sample along y)
+        freqs = np.fft.fftfreq(ny)
+        fmin, fmax = fband
+        band_mask = (freqs >= fmin) & (freqs <= fmax)
+        if fmin > 0:
+            band_mask[0] = False  # drop DC explicitly
+
+        win = np.hanning(ny) if use_hann else None
+
+        # --- per-column processing (IGOR's row-domain analytic signal path)
+        for ii in range(nx):
+            x0 = xmin + ii
+            p = np.arange(ny)
+            y_line = ymin + p
+            x_line = x0 + tan(angle) * p
+
+            # sample the column along a tilted path
+            col = map_coordinates(self.data, [y_line, x_line], order=1, mode="nearest").astype(float)
+
+            # remove DC per column
+            col -= col.mean()
+
+            # optional window
+            if use_hann:
+                col = col * win
+
+            # FFT -> hard band-pass on positive side only
+            spec = np.fft.fft(col)
+            spec_f = np.zeros_like(spec)
+            spec_f[band_mask] = spec[band_mask]
+
+            # IFFT -> analytic-like signal, then unwrap phase along y
+            analytic = np.fft.ifft(spec_f)
+            phase_col = np.unwrap(np.angle(analytic))
+
+            # store unit phasor e^{i·phi}
+            unit_phasor[ii, :] = np.exp(1j * phase_col)
+
+        # cross-column complex ratio -> Δphi_x; accumulate along x
+        dphi = np.angle(unit_phasor[1:, :] / unit_phasor[:-1, :])
+        phi = np.zeros((nx, ny), dtype=float)
+        phi[1:, :] = np.cumsum(dphi, axis=0)
+
+        # final scale to user units (IGOR does VPF/(2π))
+        phi *= (vpf / (2*np.pi))
+
+        out = phi.T  # [y, x]
+        if return_intermediates:
+            return out, {"freqs": freqs, "band_mask": band_mask, "indices": (xmin, xmax, ymin, ymax)}
+        return out
 
 class RefImage:
     def __init__(self, fname:str=None, folder:str=None, sweep_speed:int = 20, slit_size:int = 500):

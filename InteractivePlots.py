@@ -10,8 +10,73 @@ import pandas as pd
 import numpy as np
 from scipy import ndimage, signal
 from scipy.fft import fft, ifft, fftfreq, fftshift
+from scipy.signal import savgol_filter
+from scipy.ndimage import map_coordinates
 
 plt.style.use(["fast"]) #fast plotting
+
+def igor_like_phase(img, xmin, xmax, ymin, ymax, angle_deg, fmin, fmax, use_hann=True, vpf=1.0):
+    angle = np.deg2rad(angle_deg)
+    ny = ymax - ymin + 1
+    nx = xmax - xmin + 1
+
+    # Pre-allocate
+    unit_phasor = np.zeros((nx, ny), dtype=np.complex128)
+
+    # Column loop = IGOR's ii
+    for ii, x0 in enumerate(range(xmin, xmax+1)):
+        # Sample along a tilted line: x = x0 + p*tan(angle), y = ymin + p
+        p = np.arange(ny)
+        y_line = ymin + p
+        x_line = x0 + np.tan(angle) * p
+
+        # Bilinear sample the image along the line
+        # map_coordinates expects (rows, cols) = (y, x)
+        ctemp = map_coordinates(img, [y_line, x_line], order=1, mode='nearest').astype(np.float64)
+
+        # DC removal (per column)
+        ctemp = ctemp - ctemp.mean()
+
+        # Optional window (Parzen/Hann)
+        if use_hann:
+            win = np.hanning(ny)
+            ctemp_win = ctemp * win
+        else:
+            ctemp_win = ctemp
+
+        # FFT (along y), hard band-pass
+        spec = fft(ctemp_win)
+        # frequency index in IGOR is integer bins; here treat fmin/fmax as bin indices or normalized freq
+        # If fmin/fmax are normalized (0..0.5), map to bins:
+        freqs = np.fft.fftfreq(ny)          # cycles/sample, symmetric
+        band = (np.abs(freqs) >= fmin) & (np.abs(freqs) <= fmax)
+        spec_filtered = np.where(band, spec, 0)
+
+        # IFFT -> complex analytic-like signal (IGOR uses IFFT/C)
+        analytic = ifft(spec_filtered)
+
+        # Polar → phase for this column; unwrap along y
+        phase_col = np.unwrap(np.angle(analytic))
+
+        # Store unit phasor e^{i phi}
+        unit_phasor[ii, :] = np.exp(1j * phase_col)
+
+    # Cross-column phase increment and cumulative sum along x
+    dphi = np.angle(unit_phasor[1:, :] / unit_phasor[:-1, :])      # Δϕ_x
+    phi = np.zeros((nx, ny))
+    phi[1:, :] = np.cumsum(dphi, axis=0)
+
+    # Scale to physical units (match IGOR)
+    phi *= (vpf / (2*np.pi))
+    return phi.T   # return as [y, x] if you prefer
+
+class ManualRefChop:
+    """
+    Plot for aligning a beam reference manually
+    """
+    def __init__(self, ref_img):
+        self.ref = ref_img
+
 
 class BeamAligner:
     """
@@ -64,16 +129,18 @@ class BeamAligner:
 
         #Adding buttons for performing functions
         self.get_chop_ax = self.fig.add_axes([0.67, 0.2, 0.1, 0.06])
-        self.apply_correction_ax = self.fig.add_axes([0.67, 0.13, 0.1,0.06])
-        self.take_lineout_ax = self.fig.add_axes([0.67, 0.06, 0.1,0.06])
-        self.save_time_calibration_ax = self.fig.add_axes([0.8, 0.2, 0.1,0.06])
-        self.center_time_ax = self.fig.add_axes([0.8, 0.13, 0.1,0.06])
+        self.apply_correction_ax = self.fig.add_axes([0.67, 0.06, 0.1,0.06])
+        self.take_lineout_ax = self.fig.add_axes([0.8, 0.2, 0.1,0.06])
+        self.save_time_calibration_ax = self.fig.add_axes([0.8, 0.13, 0.1,0.06])
+        self.center_time_ax = self.fig.add_axes([0.8, 0.06, 0.1,0.06])
+        self.manual_chop_ax = self.fig.add_axes([0.67, 0.13, 0.1, 0.06])
 
-        self.get_chop_button = Button(self.get_chop_ax, "Get Chop")
+        self.get_chop_button = Button(self.get_chop_ax, "Auto Chop")
         self.apply_correction_button = Button(self.apply_correction_ax, "Apply\nCorrection")
         self.take_lineout_button = Button(self.take_lineout_ax, "Take\nLineout")
         self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
         self.center_time_button = Button(self.center_time_ax, "Center Time")
+        self.manual_chop_button = Button(self.manual_chop_ax, "Manual Chop")
 
     def plot_visar(self):
         self.ref.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
@@ -198,6 +265,12 @@ class BeamAligner:
         self.time_shift_slider.valmax = self.ref.img.time.max()
 
         self.fig.canvas.draw_idle()
+
+    def click_manual_chop(self):
+        """
+        Let's user perform a manual chop by hand
+        This is useful if the program has trouble fitting the peaks
+        """
 
     def get_lineout_save_name(self):
         if type(self.timing_save_name) == type(None):
@@ -434,7 +507,10 @@ class ShotRefAligner:
         self.fig.canvas.draw_idle()
 
     def click_save_time_calibration(self, val):
-        df = pd.DataFrame({"time":self.img.time})
+        fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        fiducial_lineout = fiducial_lineout/fiducial_lineout.max()
+        df = pd.DataFrame({"time":self.img.time, "fiducial": fiducial_lineout})
         df.to_csv(f"{self.folder}/time.csv")
         info = pd.DataFrame({"beam_ref":[self.beam_ref], "shear": [self.sheared_angle]})
         info.to_csv(f"{self.folder}/info.csv")
@@ -492,15 +568,15 @@ class ShotAligner:
         plt.setp(self.img_ax.get_xticklabels(), visible=False)
 
         #Label timing sections
-        self.fig.text(0.85, 0.55, "Shearing", size = "large", weight = "bold")
-        self.fig.text(0.85, 0.35, "Timing", size = "large", weight = "bold")
-        self.fig.text(0.85, 0.81, "Beam\nReference", size = "large", weight = "bold")
+        self.fig.text(0.85, 0.65, "Shearing", size = "large", weight = "bold")
+        self.fig.text(0.85, 0.52, "Timing", size = "large", weight = "bold")
+        self.fig.text(0.85, 0.85, "Beam\nReference", size = "large", weight = "bold")
 
         #create room for buttons
         self.fig.subplots_adjust(right = 0.8, bottom = 0.2)
 
         #create shearing button axes
-        self.shear_button_ax = self.fig.add_axes([0.82, 0.46, 0.14, 0.07])
+        self.shear_button_ax = self.fig.add_axes([0.82, 0.57, 0.14, 0.07])
 
         #create shearing buttons
         self.shear_button = Button(self.shear_button_ax, label = "Do Shear\nFrom Ref")
@@ -514,21 +590,31 @@ class ShotAligner:
         self.fiducial_slider = RangeSlider(self.fiducial_slider_ax, "Fiducial Bounds", valmin = self.img.space.min(), valmax = self.img.space.max())
 
         #timing buttons
-        self.save_time_calibration_ax = self.fig.add_axes([0.82, 0.15, 0.14 ,0.07])
-        self.center_time_ax = self.fig.add_axes([0.82, 0.25, 0.14,0.07])
-        self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
+        self.save_time_calibration_ax = self.fig.add_axes([0.82, 0.01, 0.14 ,0.07])
+        self.center_time_ax = self.fig.add_axes([0.82, 0.44, 0.14,0.07])
+        self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save", color = "salmon")
         self.center_time_button = Button(self.center_time_ax, "Center Time")
 
         #Beam Calibration Buttons
-        self.beam_calibration_button_ax = self.fig.add_axes([0.82, 0.73, 0.14, 0.07])
-        self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.82, 0.64, 0.14, 0.07])
+        self.beam_calibration_button_ax = self.fig.add_axes([0.82, 0.77, 0.14, 0.07])
+        self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.82, 0.69, 0.14, 0.07])
         self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
         self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+
+        #breakout time slider & button
+        self.breakout_time_button_ax = self.fig.add_axes([0.79, 0.09, 0.2, 0.03])
+        self.breakout_time_button = Button(self.breakout_time_button_ax, "Mark Breakout Time")
+        self.breakout_time_slider_ax = self.fig.add_axes([0.85, 0.15, 0.03, 0.23])
+        self.breakout_time_slider = Slider(self.breakout_time_slider_ax, "$t_{breakout}$", valmin = self.img.time.min(), valmax = self.img.time.max(), valinit = self.img.time.min(), orientation = "vertical")
+        self.breakout_uncertainty_ax = self.fig.add_axes([0.91, 0.15, 0.03, 0.23])
+        self.breakout_uncertainty_slider = Slider(self.breakout_uncertainty_ax, "$\sigma$", valmin = 0, valmax = 2, valinit = 0, orientation = "vertical")
 
     def plot_initial_lineouts(self):
         """
         Plots lineouts and fiducial bounds
         """
+        self.breakout = self.img_ax.plot([self.breakout_time_slider.val, self.breakout_time_slider.val], [self.img.space.min(), self.img.space.max()], color = "lime")
+        self.breakout_uncertainty = self.img_ax.fill_betweenx(self.img.space, self.breakout_time_slider.val - self.breakout_uncertainty_slider.val, self.breakout_time_slider.val + self.breakout_uncertainty_slider.val, color = "lime", alpha = 0.5)
         self.fiducial_lower = self.img_ax.axhline([self.fiducial_slider.val[0]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime", label = "Fiducial Bounds")
         self.fiducial_upper = self.img_ax.axhline([self.fiducial_slider.val[1]], xmin = self.img.time.min(), xmax = self.img.time.max(), color = "lime")
         fiducial_lineout = self.img.take_lineout(min = self.fiducial_slider.val[0], max = self.fiducial_slider.val[1])
@@ -582,6 +668,17 @@ class ShotAligner:
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
         self.fig.canvas.draw_idle()
 
+    def update_breakout_time(self):
+        """
+        Updates the breakout time plots
+        """
+        self.breakout[0].set_xdata(self.breakout_time_slider.val)
+        self.breakout_uncertainty.remove()
+        self.breakout_uncertainty = self.img_ax.fill_betweenx(self.img.space, self.breakout_time_slider.val - self.breakout_uncertainty_slider.val, self.breakout_time_slider.val + self.breakout_uncertainty_slider.val, color = "lime", alpha = 0.5)
+
+    def update_breakout_sliders(self, val):
+        self.update_breakout_time()
+
     def click_get_ref_lineout(self, val):
         if self.has_ref_lineout == False: #do nothing if we already have the lineout
             if self.beam_ref != "": #If a beam ref has been passed in
@@ -620,12 +717,21 @@ class ShotAligner:
         self.lineout_ax.set_ylim(ymin, ymax)
         self.fiducial_lineout.set_xdata(self.img.time)
         self.fiducial_lineout.set_ydata(fiducial_lineout/fiducial_lineout.max())
+        self.breakout_time_slider.valmin = self.img.time.min() - self.time_shift_slider.val
+        self.breakout_time_slider.valmax = self.breakout_time_slider.valmin + (self.img.time.max() - self.img.time.min())*0.9
+        self.breakout_time_slider.set_val(self.breakout_time_slider.valmin)
+        self.breakout_time_slider_ax.set_ylim(self.breakout_time_slider.valmin, self.breakout_time_slider.valmax)
+        self.breakout_time_slider.val = self.breakout_time_slider.val - self.time_shift_slider.val
+        self.update_breakout_time()
         self.img_ax.set_xlim(self.img.time.min(), self.img.time.max())
         self.img_ax.set_ylim(self.img.space.min(), self.img.space.max())
         self.fig.canvas.draw_idle()
 
     def click_save_time_calibration(self, val):
-        df = pd.DataFrame({"time":self.img.time})
+        fiducial_lineout = self.img.take_lineout(self.fiducial_slider.val[0], self.fiducial_slider.val[1])
+        fiducial_lineout = fiducial_lineout - np.median(fiducial_lineout)
+        fiducial_lineout = fiducial_lineout/fiducial_lineout.max()
+        df = pd.DataFrame({"time":self.img.time, "fiducial": fiducial_lineout})
         df.to_csv(f"{self.folder}/time.csv")
         info = pd.DataFrame({"beam_ref":[self.beam_ref], 
                              "shot_ref": [self.shot_ref], 
@@ -638,6 +744,8 @@ class ShotAligner:
         self.colormap_slider.on_changed(self.update_colormap_slider)
         self.fiducial_slider.on_changed(self.update_fiducial_bounds)
         self.time_shift_slider.on_changed(self.update_time_shift_slider)
+        self.breakout_time_slider.on_changed(self.update_breakout_sliders)
+        self.breakout_uncertainty_slider.on_changed(self.update_breakout_sliders)
 
     def set_buttons(self):
         self.shear_button.on_clicked(self.click_shear)
@@ -881,28 +989,49 @@ class AnalysisPlot:
         fft_ = fft(data_chunk, axis = 0)
         phase = np.angle(fft_)
         freq = np.abs(np.vstack([fftfreq(data_chunk.shape[1]) for i in range(data_chunk.shape[0])]))
-        print(freq.shape, fft_.shape)
+        #print(freq.shape, fft_.shape)
         filter = np.logical_and(freq > self.fft_slider.val[0], freq < self.fft_slider.val[1])
         filtered_fft = fft_*filter
         freq = fftfreq(data_chunk.shape[0])
         filter_mask = np.logical_and(freq > self.fft_slider.val[0], freq < self.fft_slider.val[1])
         filtered_fft = fft_ * filter_mask[:,np.newaxis]
         #self.phase = np.angle(filtered_fft)
-        self.phase = np.unwrap(np.angle(filtered_fft), axis=0)
-        print(data_chunk.shape, self.phase.shape)
+
+        self.phase = self.img.get_phase_igor(
+            x_bounds=(self.x_slider.val[0],self.x_slider.val[1]),
+            y_bounds=(self.y_slider.val[0], self.y_slider.val[1]),
+            fband=(self.fft_slider.val[0], self.fft_slider.val[1]),
+            angle_deg=0.0,          # or your shear/tilt if not already corrected upstream
+            use_hann=True,
+            vpf=1)
+
+        #==
+        #Before fix
+        #self.phase = np.unwrap(np.angle(filtered_fft), axis=0)
+        #self.phase = self.phase/(2*np.pi)
+        #==
+
+        #print(data_chunk.shape, self.phase.shape)
         #self.phase = self.phase - self.initial_phase[:, np.newaxis]
         self.original_phase = self.phase
-        fourier_filtered = ifft(filtered_fft, n = data_chunk.shape[1], axis = 0).real
+        fourier_filtered_all = ifft(filtered_fft, n = data_chunk.shape[0], axis = 0).real
+        fourier_filtered = fourier_filtered_all.real
+        #get phase from the filtered chunk
+        fft2 = fft(fourier_filtered, axis = 0)
+        print(self.phase.shape)
+        #self.phase = np.unwrap(np.angle(fft2), axis=0)/(2*np.pi)
+        self.original_phase = self.phase
+        print(self.phase.shape, fourier_filtered.shape)
         fig = plt.figure()
         ax = fig.add_subplot(1, 2, 1)
         ax2 = fig.add_subplot(1, 2, 2)
         ax.set_title("Fourier Filtered")
         ax2.set_title("Reference Lineout")
         X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], fourier_filtered.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], fourier_filtered.shape[0] + 1))
-        print(np.shape(X))
-        print(np.shape(Y))
-        print(np.shape(fourier_filtered))
-        print(fourier_filtered.min(), fourier_filtered.max())
+        #print(np.shape(X))
+        #print(np.shape(Y))
+        #print(np.shape(fourier_filtered))
+        #print(fourier_filtered.min(), fourier_filtered.max())
         heat_min = 0.01 if fourier_filtered.min() <= 0 else fourier_filtered.min()
         ax.pcolormesh(X, Y, fourier_filtered, cmap='magma')
         ax2.plot(np.linspace(self.y_slider.val[0], self.y_slider.val[1], len(self.ref_lineout)), self.ref_lineout)
@@ -924,6 +1053,7 @@ class AnalysisPlot:
         self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], c = "red")
         self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], c = "red")
         self.velocity = self.phase[min_loc:max_loc, :].mean(axis = 0)
+        self.velocity = savgol_filter(self.velocity, window_length = int(len(self.img.time)/100), polyorder = 2)
         self.velo = self.velocity_lineout_ax.plot(phase_time, self.velocity)
         self.fig.canvas.draw_idle()
 
@@ -945,7 +1075,7 @@ class AnalysisPlot:
 
     def click_gaussian_filter(self, val):
         if self.transformed == True:
-            self.phase = ndimage.gaussian_filter(self.phase, sigma = np.std(self.phase))
+            self.phase = ndimage.gaussian_filter(self.phase, sigma = 2)
             self.phase_ax.clear()
             self.phase_ax.set_title("Phase")
             X, Y = np.meshgrid(np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1] + 1), np.linspace(self.y_slider.val[0], self.y_slider.val[1], self.phase.shape[0] + 1))
@@ -1003,6 +1133,7 @@ class AnalysisPlot:
         """
         if self.vpf_applied == False:
             self.velocity = self.velocity * float(self.vpf_box.text)
+            #self.velocity = (self.phase.mean(axis=0) / (2 * np.pi)) * self.vpf
         self.velo[0].set_ydata(self.velocity)
         self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
         self.fig.canvas.draw_idle()

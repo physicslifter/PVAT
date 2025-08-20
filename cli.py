@@ -21,7 +21,9 @@ class CLI:
     def __init__(self):
         self.manager = AnalysisManager("Analysis")
         self.print_welcome_message()
-        self.analysis_prompt()
+        while(1):
+            self.analysis_prompt()
+            #run analysis prompt until user quite
     
     def print_welcome_message(self):
         #print welcome msg
@@ -71,9 +73,9 @@ class CLI:
         """
         Prompt to run once analysis has been opened
         """
-        msg = "What would you like to do?\n(1) Analyze a Beam Reference\n(2) Analyze a Shot Reference\n(3) Analyze a Shot\n(Q) Quit"
-        failure_msg = "Must be (1), (2) or (3)"
-        self.analysis_response = get_response(msg, [1, 2, 3], failure_msg)
+        msg = "What would you like to do?\n(1) Analyze a Beam Reference\n(2) Analyze a Shot\n(Q) Quit"
+        failure_msg = "Must be (1), or (2)"
+        self.analysis_response = get_response(msg, [1, 2], failure_msg)
         if self.analysis_response == "Q":
             sys.exit(0)
         self.handle_analysis_response()
@@ -90,8 +92,12 @@ class CLI:
             ref_num = get_response(msg, valid_beam_refs, "Invalid response")
             ref_name = self.manager.beam_refs[ref_num - 1]
             self.manager.analyze_beam_ref(name = ref_name)
-
-        
+        elif self.analysis_response == 2: #If we want to analyze a shot
+            #get reference for the shot
+            #get beam reference
+            #analyze shot reference
+            #analyze shot
+            pass
     
 
 

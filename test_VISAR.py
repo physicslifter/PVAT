@@ -158,7 +158,7 @@ if test_synthetic_beam_interactive_plot == True:
 if test_shot_aligner_plot == True:
     shot_file = "../JLF_2025/VISAR1/0408_1452_Shot54_Visar1_ref.tif"
     img = VISARImage(shot_file)
-    aligner = ShotAligner(img)
+    aligner = ShotRefAligner(img)
     aligner.initialize_plot()
     aligner.show_plot()
 
