@@ -14,8 +14,8 @@ import re
 from datetime import datetime
 
 INFO_COLS = [
-    "Name", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", "slit_size", "etalon",
-    "analysis_location", "date_analyzed", "notes"
+    "Name", "Shot no.", "Visar", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", 
+    "slit_size", "etalon", "beam_ref_path", "Analysis_Path", "Date_Analyzed", "Notes"
 ]
 
 def ensure_info_xlsx(path):
@@ -51,7 +51,7 @@ def get_next_version(base_folder, base_name):
 def normalize_path(p):
     return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
 
-def safe_str(val, default="Unknown"):
+def safe_str(val, default="None"):
     if pd.isnull(val) or val is None:
         return default
     return str(val)
@@ -66,6 +66,13 @@ def safe_float(val, default=None):
         return float(val)
     except Exception:
         return default
+
+def extract_shot_visar(name):
+    """Extract ShotNo and Visar from Name like 'Shot38_Visar2'."""
+    m = re.match(r'Shot(\d+)_Visar(\d+)', str(name))
+    if m:
+        return m.group(1), m.group(2)
+    return None, None
 
 class SingleShotAnalysis:
     """
@@ -104,6 +111,7 @@ class BeamAlignmentAnalysis:
         self.aligner = BeamAligner(self.ref)
         self.aligner.set_lineout_save_name()
 
+
 class AnalysisManager:
     def __init__(self, base_directory="Analysis"):
         self.base_directory = base_directory
@@ -126,12 +134,12 @@ class AnalysisManager:
 
     def extract_info_from_csv(self, tif_file, csv_path):
         df = pd.read_csv(csv_path, dtype=str)
+        df.columns = [col.lower() for col in df.columns]
         norm_input = normalize_path(tif_file)
         base = os.path.basename(tif_file)
         base_noext = os.path.splitext(base)[0]
-        base_noext_stripped = strip_version_suffix(base_noext)
     
-        df['norm_filename'] = df['filename'].fillna("").apply(normalize_path)
+        df['norm_filename'] = df.get('filename', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
         df['norm_filepath'] = df.get('filepath', pd.Series([""]*len(df))).fillna("").apply(normalize_path)
     
         matches = df[df['norm_filepath'] == norm_input]
@@ -142,45 +150,40 @@ class AnalysisManager:
         if matches.empty:
             matches = df[df['filename'].astype(str).apply(lambda x: os.path.splitext(os.path.basename(x))[0] == base_noext)]
         if matches.empty:
-            matches = df[df['filename'].astype(str).apply(
-                lambda x: strip_version_suffix(os.path.splitext(os.path.basename(x))[0]) == base_noext_stripped
-            )]
-        if matches.empty:
-            matches = df[df['filename'].astype(str).str.contains(base_noext_stripped, na=False, case=False)]
-        if matches.empty:
-            print("DEBUG: No match found.")
-            print("Looking for:", tif_file)
-            print("Base:", base)
-            print("Base noext:", base_noext)
-            print("All CSV filenames:", df['filename'].dropna().unique())
             raise ValueError(f"No entry found in {csv_path} for file {tif_file}")
     
         row = matches.iloc[0]
+        
+        shot_no = safe_str(row.get("shot no.", ""))
+        visar = safe_str(row.get("visar", ""))
+        file_type = safe_str(row.get("type", ""))
+        name = safe_str(row.get("name", ""))
+        
+        if not name or name.lower() in ["none", "nan"]:
+            if shot_no and shot_no.lower() not in ["none", "nan", ""]:
+                if visar and visar.lower() not in ["none", "nan", ""]:
+                    name = f"Shot{int(float(shot_no))}_Visar{int(float(visar))}"
+                else:
+                    name = f"Shot{int(float(shot_no))}"
+            else:
+                name = base_noext
+                
         info_row = {
-            "Name": safe_str(row.get("Name", "")),
-            "Type": safe_str(row.get("Type", "")),
-            "Filename": safe_str(row.get("filename", tif_file)),
-            "Filepath": safe_str(row.get("Filepath", tif_file)),
+            "Name": name,
+            "Shot no.": shot_no,
+            "Visar": visar,
+            "Type": file_type,
+            "Filename": base_noext,
+            "Filepath": safe_str(row.get("filepath", tif_file)),
             "sweep_speed": safe_float(row.get("sweep_time", ""), default=20),
             "slit_size": safe_float(row.get("slit_size", ""), default=500),
             "etalon": safe_str(row.get("etalon", "")),
         }
         
-        if "synthetic" in csv_path.lower():
-            info_row["DataSource"] = "Synthetic Data"
-        else:
-            info_row["DataSource"] = "Real Data"
-        
-        print("Extracted info_row:", info_row)
+        info_row["DataSource"] = "Synthetic Data" if "synthetic" in csv_path.lower() else "Real Data"
         return info_row
 
-    def save_analysis_instance(
-        self,
-        data_type,
-        base_name,
-        info_row,
-        notes=""
-    ):
+    def save_analysis_instance(self, data_type, base_name, info_row, notes=""):
         """
         Create a new versioned analysis instance and update all info files.
         Returns the instance folder path.
@@ -195,11 +198,20 @@ class AnalysisManager:
         instance_folder = os.path.join(base_folder, f"{safe_str(base_name)}_{version}")
         os.makedirs(instance_folder, exist_ok=True)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        row = {k: safe_str(v) for k, v in info_row.items()}  
+        row = {k: str(v) for k, v in info_row.items()}
+
+        if str(data_type).lower() in ["shot", "shotref"]:
+            if "beam_ref_path" not in row or not row["beam_ref_path"]:
+                raise ValueError("beam_ref must be set for Shot/ShotRef analyses.")
+        elif str(data_type).lower() == "beamref":
+            row["beam_ref_path"] = ""  #maybe add the delete column here...
+        else:
+            row["beam_ref_path"] = ""
+
         row.update({
-            "analysis_location": os.path.abspath(instance_folder),
-            "date_analyzed": now,
-            "notes": notes
+            "Analysis_Path": os.path.abspath(instance_folder),
+            "Date_Analyzed": now,
+            "Notes": notes
         })
         instance_info_path = os.path.join(instance_folder, "info.xlsx")
         pd.DataFrame([row], columns=INFO_COLS).to_excel(instance_info_path, index=False)
@@ -229,24 +241,26 @@ class AnalysisManager:
         else:
             return None
 
+    def get_latest_version(self, data_type, base_name):
+        versions = self.list_versions(data_type, base_name)
+        if not versions:
+            return None
+        latest = max(versions, key=lambda v: int(v.split('_')[-1]))
+        return latest
+
+    def duplicate_version(self, data_type, base_name):
+        versions = self.list_versions(data_type, base_name)
+        if not versions:
+            raise Exception("No existing version to duplicate.")
+        latest_version = max(versions, key=lambda v: int(v.split('_')[-1]))
+        src_folder = os.path.join(self.analysis_path, data_type, base_name, latest_version)
+        next_version_num = int(latest_version.split('_')[-1]) + 1
+        dest_folder = os.path.join(self.analysis_path, data_type, base_name, f"{base_name}_{next_version_num}")
+        shutil.copytree(src_folder, dest_folder)
+        return dest_folder
+
     def remove_analysis(self, analysis_name):
         """Deletes analysis and data."""
         analysis_path = os.path.join(self.base_directory, analysis_name)
         if os.path.exists(analysis_path):
             shutil.rmtree(analysis_path)
-
-
-# Example:
-# if __name__ == "__main__":
-#     am = AnalysisManager()
-#     am.create_or_open_analysis("Analysis1")
-#     tif_file = "0404_1525_Shot38_Visar2_ref.tif"
-#     csv_path = "data/real_info.csv"
-#     info_row = am.extract_info_from_csv(tif_file, csv_path)
-#     folder = am.save_analysis_instance(
-#         data_type=info_row["Type"] if info_row["Type"] else "Shot",
-#         base_name=info_row["Name"] if info_row["Name"] else "Unknown",
-#         info_row=info_row
-#     )
-#     print(f"Saved new analysis instance at: {folder}")
-#     print("Current versions:", am.list_versions(info_row["Type"], info_row["Name"]))

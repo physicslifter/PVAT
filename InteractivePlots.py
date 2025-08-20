@@ -12,9 +12,57 @@ from scipy import ndimage, signal
 from scipy.fft import fft, ifft, fftfreq, fftshift
 from scipy.signal import savgol_filter
 from scipy.ndimage import map_coordinates
+import shutil
+import os
 
 plt.style.use(["fast"]) #fast plotting
 
+#Helper functions
+def launch_beamref_plot(fname, folder, sweep_speed, slit_size):
+    from VISAR import RefImage
+    from InteractivePlots import BeamAligner
+    ref_img = RefImage(fname=fname, folder=folder, sweep_speed=sweep_speed, slit_size=slit_size)
+    aligner = BeamAligner(ref_img)
+    aligner.set_lineout_save_name(os.path.join(folder, "lineouts.csv"))
+    aligner.set_correction_save_name(os.path.join(folder, "correction.csv"))
+    aligner.show_plot()
+
+def get_beamref_params(beamref_folder, real_data_csv):
+    info_path = os.path.join(beamref_folder, "info.xlsx")
+    fname, sweep_speed, slit_size = None, None, None
+
+    if os.path.exists(info_path):
+        info = pd.read_excel(info_path)
+        if "Filepath" in info.columns:
+            fname = info.at[0, "Filepath"]
+        elif "filepath" in info.columns:
+            fname = info.at[0, "filepath"]
+        sweep_speed = info.at[0, "sweep_speed"] if "sweep_speed" in info.columns else None
+        slit_size = info.at[0, "slit_size"] if "slit_size" in info.columns else None
+
+    if not fname or pd.isna(fname):
+        tif_files = [f for f in os.listdir(beamref_folder) if f.lower().endswith(".tif")]
+        if tif_files:
+            fname = os.path.join(beamref_folder, tif_files[0])
+        else:
+            raise Exception("No .tif file found in BeamRef folder.")
+
+    df = pd.read_csv(real_data_csv, dtype=str)
+    row = df[df['filepath'] == fname]
+    if row.empty:
+        base = os.path.basename(fname)
+        row = df[df['filename'].astype(str).apply(lambda x: os.path.basename(str(x)) == base)]
+    if not row.empty:
+        sweep_speed = row.iloc[0].get('sweep_speed', sweep_speed)
+        slit_size = row.iloc[0].get('slit_size', slit_size)
+
+    if not sweep_speed or pd.isna(sweep_speed):
+        sweep_speed = 20
+    if not slit_size or pd.isna(slit_size):
+        slit_size = 500
+
+    return fname, float(sweep_speed), float(slit_size)
+    
 def igor_like_phase(img, xmin, xmax, ymin, ymax, angle_deg, fmin, fmax, use_hann=True, vpf=1.0):
     angle = np.deg2rad(angle_deg)
     ny = ymax - ymin + 1
@@ -141,6 +189,11 @@ class BeamAligner:
         self.save_time_calibration_button = Button(self.save_time_calibration_ax, "Save Time\nCalibration")
         self.center_time_button = Button(self.center_time_ax, "Center Time")
         self.manual_chop_button = Button(self.manual_chop_ax, "Manual Chop")
+        
+        #Saving progress
+        self.save_progress_ax = self.fig.add_axes([0.85, 0.01, 0.13, 0.05])
+        self.save_progress_button = Button(self.save_progress_ax, "Save Progress")
+        self.save_progress_button.on_clicked(lambda event: self.save_progress())
 
     def plot_visar(self):
         self.ref.img.show_data(ax = self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
@@ -171,8 +224,6 @@ class BeamAligner:
         self.has_lineout_bounds = True
 
     def update_beam_slider(self, val):
-        #Function for moving the beam lineout slider
-        #reset the slider positions
         self.beam_min.set_ydata([val[0], val[0]])
         self.beam_max.set_ydata([val[1], val[1]])
 
@@ -285,10 +336,6 @@ class BeamAligner:
             time = self.fiducial_lineout.get_xdata()
             df = pd.DataFrame({"time": time, "beam": beam_lineout, "fiducial": fiducial_lineout})
             df.to_csv(self.timing_save_name)
-
-            #updates saved CSV, PNG
-            #plot_filename = self.timing_save_name.replace('.csv', '.png')
-            #self.fig.savefig(plot_filename) #new
         else:
             pass
 
@@ -308,6 +355,42 @@ class BeamAligner:
         self.center_time_button.on_clicked(self.click_zero_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_cal)
 
+    def get_state_dict(self):
+        return {
+            "beam_lineout_slider_min": self.beam_lineout_slider.val[0],
+            "beam_lineout_slider_max": self.beam_lineout_slider.val[1],
+            "colormap_slider_min": self.colormap_slider.val[0],
+            "colormap_slider_max": self.colormap_slider.val[1],
+            "chopper_slider": self.chopper_slider.val,
+            "fiducial_lineout_slider_min": self.fiducial_lineout_slider.val[0],
+            "fiducial_lineout_slider_max": self.fiducial_lineout_slider.val[1],
+            "time_shift_slider": self.time_shift_slider.val,
+        }
+
+    def set_state_from_dict(self, state):
+        try:
+            self.beam_lineout_slider.set_val([float(state["beam_lineout_slider_min"]), float(state["beam_lineout_slider_max"])])
+            self.colormap_slider.set_val([float(state["colormap_slider_min"]), float(state["colormap_slider_max"])])
+            self.chopper_slider.set_val(float(state["chopper_slider"]))
+            self.fiducial_lineout_slider.set_val([float(state["fiducial_lineout_slider_min"]), float(state["fiducial_lineout_slider_max"])])
+            self.time_shift_slider.set_val(float(state["time_shift_slider"]))
+            # Add more as needed
+        except Exception as e:
+            print(f"Error loading progress: {e}")
+    
+    def save_progress(self):
+        state = self.get_state_dict()
+        df = pd.DataFrame([state])
+        progress_path = os.path.join(self.ref.folder, "progress.csv")
+        df.to_csv(progress_path, index=False)
+
+    def load_progress(self):
+        progress_path = os.path.join(self.ref.folder, "progress.csv")
+        if os.path.exists(progress_path):
+            df = pd.read_csv(progress_path)
+            if not df.empty:
+                self.set_state_from_dict(df.iloc[0].to_dict())
+
     def show_plot(self):
         self.initialize_plot()
         if self.showing_visar == False:
@@ -318,8 +401,8 @@ class BeamAligner:
             self.plot_lineout_bounds()
         self.set_sliders()
         self.set_buttons()
+        self.load_progress()
         plt.show()
-
 
 class ShotRefAligner:
     """
@@ -355,14 +438,6 @@ class ShotRefAligner:
         #create room for buttons
         self.fig.subplots_adjust(right = 0.7, bottom = 0.2)
 
-        #Beam reference text entry
-        self.ref_file_ax = self.fig.add_axes([0.72, 0.81, 0.15, 0.04])
-        self.ref_file_entry = TextBox(self.ref_file_ax, "Ref\nFolder", initial = self.beam_ref)
-        label = self.ref_file_entry.ax.get_children()[0]
-        label.set_position([1.2, 0.9])
-        label.set_verticalalignment('top')
-        label.set_horizontalalignment('center')
-
         #create shearing button axes
         self.add_shear_button_ax = self.fig.add_axes([0.72, 0.5, 0.14, 0.07])
         self.shear_button_ax = self.fig.add_axes([0.72, 0.4, 0.14, 0.07])
@@ -394,6 +469,15 @@ class ShotRefAligner:
         self.beam_calibration_lineout_button_ax = self.fig.add_axes([0.72, 0.73, 0.14, 0.07])
         self.beam_calibration_button = Button(self.beam_calibration_button_ax, "Apply Beam\nCalibration")
         self.beam_calibration_lineout_button = Button(self.beam_calibration_lineout_button_ax, "Get Ref\nLineout")
+        
+        #Edit Beamref Button
+        self.edit_beamref_ax = self.fig.add_axes([0.82, 0.82, 0.14, 0.07])
+        self.edit_beamref_button = Button(self.edit_beamref_ax, "Edit BeamRef")
+        
+        #Save Progress
+        self.save_progress_ax = self.fig.add_axes([0.85, 0.01, 0.13, 0.05])
+        self.save_progress_button = Button(self.save_progress_ax, "Save Progress")
+        self.save_progress_button.on_clicked(lambda event: self.save_progress())
 
     def plot_initial_lineouts(self):
         """
@@ -423,11 +507,13 @@ class ShotRefAligner:
         ymax =  (fiducial_lineout[chop[0]:chop[1]]/fiducial_lineout.max()).max()
         self.lineout_ax.set_ylim(ymin, ymax)
 
-    def set_ref_folder(self, folder):
+    def set_beam_ref_folder(self, folder):
         self.beam_ref = folder
+        
+    def set_shot_ref_folder(self, folder):
+        self.shot_ref = folder
 
     def set_folder(self, folder):
-        #sets the save folder for the analysis
         self.folder = folder
 
     def plot_visar(self):
@@ -452,10 +538,12 @@ class ShotRefAligner:
     def click_get_ref_lineout(self, val):
         if self.has_ref_lineout == False: #do nothing if we already have the lineout
             if self.beam_ref != "": #If a beam ref has been passed in
-                try:
-                    ref_data = pd.read_csv(f"{self.beam_ref}/lineouts.csv")
-                except:
-                    raise Exception("Ref data not found")
+                ref_data_path = os.path.join(self.beam_ref, "lineouts.csv")
+                ref_data_path = os.path.abspath(ref_data_path)
+                if not os.path.exists(ref_data_path):
+                    print(f"Reference lineouts file not found: {ref_data_path}")
+                    return  # Or show a GUI message
+                ref_data = pd.read_csv(ref_data_path)
             self.lineout_ax.plot(ref_data.time, ref_data.beam, label = "Reference Beam")
             self.lineout_ax.plot(ref_data.time, ref_data.fiducial, label = "Reference Fiducial")
             self.lineout_ax.legend()
@@ -463,11 +551,23 @@ class ShotRefAligner:
             self.fig.canvas.draw_idle()
 
     def click_apply_beam_calibration(self, val):
-        if self.beam_calibration_applied == False:
-            calibration = ImageCorrection(f"{self.beam_ref}/correction.csv")
-            self.img.apply_correction(calibration)
-            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
-            self.fig.canvas.draw_idle()
+        correction_path = os.path.join(self.beam_ref, "correction.csv")
+        print(f"DEBUG: self.beam_ref = {self.beam_ref}")
+        if not self.beam_ref or not os.path.exists(self.beam_ref):
+            print(f"[ERROR] BeamRef folder is not set or does not exist: {self.beam_ref}")
+            return
+        correction_path = os.path.abspath(correction_path)
+        if not os.path.exists(correction_path):
+            print(f"Correction file not found: {correction_path}")
+            return
+        try:
+            calibration = ImageCorrection(correction_path)
+        except Exception as e:
+            print(f"Failed to load correction: {e}")
+            return
+        self.img.apply_correction(calibration)
+        self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.fig.canvas.draw_idle()
         self.beam_calibration_applied = True
 
     def click_add_shear(self, val):
@@ -513,7 +613,7 @@ class ShotRefAligner:
         df = pd.DataFrame({"time":self.img.time, "fiducial": fiducial_lineout})
         df.to_csv(f"{self.folder}/time.csv")
         info = pd.DataFrame({"beam_ref":[self.beam_ref], "shear": [self.sheared_angle]})
-        info.to_csv(f"{self.folder}/info.csv")
+        info.to_excel(f"{self.folder}/info.xlsx", index=False)
 
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
@@ -528,6 +628,45 @@ class ShotRefAligner:
         self.beam_calibration_button.on_clicked(self.click_apply_beam_calibration)
         self.center_time_button.on_clicked(self.click_center_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
+        self.edit_beamref_button.on_clicked(self.click_edit_beamref)
+
+    def get_state_dict(self):
+        return {
+            "colormap_slider_min": self.colormap_slider.val[0],
+            "colormap_slider_max": self.colormap_slider.val[1],
+            "time_shift_slider": self.time_shift_slider.val,
+            "fiducial_slider_min": self.fiducial_slider.val[0],
+            "fiducial_slider_max": self.fiducial_slider.val[1],
+            "shear_slider": self.shear_slider.val,
+            "beam_ref": getattr(self, "beam_ref", ""),
+        }
+
+    def set_state_from_dict(self, state):
+        try:
+            self.colormap_slider.set_val([float(state["colormap_slider_min"]), float(state["colormap_slider_max"])])
+            self.time_shift_slider.set_val(float(state["time_shift_slider"]))
+            self.fiducial_slider.set_val([float(state["fiducial_slider_min"]), float(state["fiducial_slider_max"])])
+            self.shear_slider.set_val(float(state["shear_slider"]))
+            if "beam_ref" in state:
+                self.beam_ref = state["beam_ref"]
+        except Exception as e:
+            print(f"Error loading progress: {e}")
+
+    def click_edit_beamref(self, event):
+        self.open_beamref_interactive_plot()
+
+    def save_progress(self):
+        state = self.get_state_dict()
+        df = pd.DataFrame([state])
+        progress_path = os.path.join(self.folder, "progress.csv")
+        df.to_csv(progress_path, index=False)
+
+    def load_progress(self):
+        progress_path = os.path.join(self.folder, "progress.csv")
+        if os.path.exists(progress_path):
+            df = pd.read_csv(progress_path)
+            if not df.empty:
+                self.set_state_from_dict(df.iloc[0].to_dict())
 
     def show_plot(self):
         self.initialize_plot()
@@ -538,12 +677,38 @@ class ShotRefAligner:
         self.set_sliders()
         self.set_buttons()
         plt.show()
+    
+    def open_beamref_interactive_plot(self):
+        info_path = os.path.join(self.folder, "info.xlsx")
+        if not os.path.exists(info_path):
+            print("No info file found.")
+            return
+    
+        info_df = pd.read_excel(info_path)
+        if 'beam_ref_path' not in info_df.columns:
+            print("No 'beam_ref_path' column found in info.xlsx. Please associate a BeamRef with this analysis.")
+            return
+        current_beamref = info_df.at[0, 'beam_ref_path']
+        if not os.path.exists(current_beamref):
+            print(f"BeamRef folder {current_beamref} does not exist.")
+            return
+    
+        real_data_csv = "data/real_info.csv" #adjust later...
+        try:
+            fname, sweep_speed, slit_size = get_beamref_params(current_beamref, real_data_csv)
+        except Exception as e:
+            print(f"Error getting BeamRef parameters: {e}")
+            return
+        print("Launching BeamAligner interactive plot process...")
+
+        launch_beamref_plot(fname, current_beamref, sweep_speed, slit_size)
+
 
 class ShotAligner:
     """
     Class for aligning a shot ref
     """
-    def __init__(self, img:VISARImage):
+    def __init__(self, img:VISARImage, go_to_analysis_callback=None):
         self.img = img
         self.name = f"{img.fname.split('/')[-1].lower().replace('.tif', '')}"
         self.showing_visar = False
@@ -556,6 +721,7 @@ class ShotAligner:
         self.has_ref_lineout = 0
         self.has_phase = False
         self.beam_calibration_applied = False
+        self.go_to_analysis_callback = go_to_analysis_callback
 
     def initialize_plot(self):
         self.fig = plt.figure(figsize = (10, 8))
@@ -646,7 +812,6 @@ class ShotAligner:
         self.shot_ref = folder
 
     def set_folder(self, folder):
-        #sets the save folder for the analysis
         self.folder = folder
 
     def plot_visar(self):
@@ -682,10 +847,12 @@ class ShotAligner:
     def click_get_ref_lineout(self, val):
         if self.has_ref_lineout == False: #do nothing if we already have the lineout
             if self.beam_ref != "": #If a beam ref has been passed in
-                try:
-                    ref_data = pd.read_csv(f"{self.beam_ref}/lineouts.csv")
-                except:
-                    raise Exception("Ref data not found")
+                ref_data_path = os.path.join(self.beam_ref, "lineouts.csv")
+                ref_data_path = os.path.abspath(ref_data_path)
+                if not os.path.exists(ref_data_path):
+                    print(f"Reference lineouts file not found: {ref_data_path}")
+                    return  # Or show a GUI message
+                ref_data = pd.read_csv(ref_data_path)
             self.lineout_ax.plot(ref_data.time, ref_data.beam, label = "Reference Beam")
             self.lineout_ax.plot(ref_data.time, ref_data.fiducial, label = "Reference Fiducial")
             self.lineout_ax.legend()
@@ -693,15 +860,27 @@ class ShotAligner:
             self.fig.canvas.draw_idle()
 
     def click_apply_beam_calibration(self, val):
-        if self.beam_calibration_applied == False:
-            calibration = ImageCorrection(f"{self.beam_ref}/correction.csv")
-            self.img.apply_correction(calibration)
-            self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
-            self.fig.canvas.draw_idle()
+        correction_path = os.path.join(self.beam_ref, "correction.csv")
+        print(f"DEBUG: self.beam_ref = {self.beam_ref}")
+        if not self.beam_ref or not os.path.exists(self.beam_ref):
+            print(f"[ERROR] BeamRef folder is not set or does not exist: {self.beam_ref}")
+            return
+        correction_path = os.path.abspath(correction_path)
+        if not os.path.exists(correction_path):
+            print(f"Correction file not found: {correction_path}")
+            return
+        try:
+            calibration = ImageCorrection(correction_path)
+        except Exception as e:
+            print(f"Failed to load correction: {e}")
+            return
+        self.img.apply_correction(calibration)
+        self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.fig.canvas.draw_idle()
         self.beam_calibration_applied = True
 
     def click_shear(self, val):
-        info = pd.read_csv(f"{self.shot_ref}/info.csv")
+        info = pd.read_excel(f"{self.shot_ref}/info.xlsx")
         self.img.shear_data(angle = info["shear"].values[0])
         self.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
         self.fig.canvas.draw_idle()
@@ -738,7 +917,7 @@ class ShotAligner:
                              "fname": [self.img.fname],
                              "sweep_speed": [self.img.sweep_speed],
                              "slit_size": [self.img.slit_size]})
-        info.to_csv(f"{self.folder}/info.csv")
+        info.to_excel(f"{self.folder}/info.xlsx", index=False)
 
     def set_sliders(self):
         self.colormap_slider.on_changed(self.update_colormap_slider)
@@ -753,7 +932,45 @@ class ShotAligner:
         self.beam_calibration_button.on_clicked(self.click_apply_beam_calibration)
         self.center_time_button.on_clicked(self.click_center_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_calibration)
+        self.edit_beamref_button.on_clicked(self.click_edit_beamref)
+        # self.go_to_analysis_button.on_clicked(self.click_go_to_analysis)
 
+    def get_state_dict(self):
+        return {
+            "colormap_slider_min": self.colormap_slider.val[0],
+            "colormap_slider_max": self.colormap_slider.val[1],
+            "time_shift_slider": self.time_shift_slider.val,
+            "fiducial_slider_min": self.fiducial_slider.val[0],
+            "fiducial_slider_max": self.fiducial_slider.val[1],
+            "beam_ref": getattr(self, "beam_ref", ""),
+        }
+
+    def set_state_from_dict(self, state):
+        try:
+            self.colormap_slider.set_val([float(state["colormap_slider_min"]), float(state["colormap_slider_max"])])
+            self.time_shift_slider.set_val(float(state["time_shift_slider"]))
+            self.fiducial_slider.set_val([float(state["fiducial_slider_min"]), float(state["fiducial_slider_max"])])
+            if "beam_ref" in state:
+                self.beam_ref = state["beam_ref"]
+        except Exception as e:
+            print(f"Error loading progress: {e}")
+
+    def click_edit_beamref(self, event):
+        self.open_beamref_interactive_plot()
+
+    def save_progress(self):
+        state = self.get_state_dict()
+        df = pd.DataFrame([state])
+        progress_path = os.path.join(self.folder, "progress.csv")
+        df.to_csv(progress_path, index=False)
+
+    def load_progress(self):
+        progress_path = os.path.join(self.folder, "progress.csv")
+        if os.path.exists(progress_path):
+            df = pd.read_csv(progress_path)
+            if not df.empty:
+                self.set_state_from_dict(df.iloc[0].to_dict())
+                
     def show_plot(self):
         self.initialize_plot()
         if self.showing_visar == False:
@@ -762,7 +979,45 @@ class ShotAligner:
             self.plot_initial_lineouts()
         self.set_sliders()
         self.set_buttons()
+        self.load_progress()
         plt.show()
+
+    def open_beamref_interactive_plot(self):
+        import os
+        import pandas as pd
+    
+        info_path = os.path.join(self.folder, "info.xlsx")
+        if not os.path.exists(info_path):
+            print("No info file found.")
+            return
+    
+        info_df = pd.read_excel(info_path)
+        if 'beam_ref_path' not in info_df.columns:
+            print("No 'beam_ref_path' column found in info.xlsx. Please associate a BeamRef with this analysis.")
+            return
+        current_beamref = info_df.at[0, 'beam_ref_path']
+        if not os.path.exists(current_beamref):
+            print(f"BeamRef folder {current_beamref} does not exist.")
+            return
+    
+        real_data_csv = "data/real_info.csv" #adjust later...
+        try:
+            fname, sweep_speed, slit_size = get_beamref_params(current_beamref, real_data_csv)
+        except Exception as e:
+            print(f"Error getting BeamRef parameters: {e}")
+            return
+        print("Launching BeamAligner interactive plot process...")
+
+        launch_beamref_plot(fname, current_beamref, sweep_speed, slit_size)
+        
+    def click_go_to_analysis(self, event):
+        folder = self.folder
+        callback = self.go_to_analysis_callback
+        assert self.fig is not None, "Figure not initialized!"
+        plt.close(self.fig)
+        if callback and folder:
+            import threading
+            threading.Timer(0.1, lambda: callback(folder)).start()
 
 class AnalysisPlot:
     """
@@ -783,15 +1038,17 @@ class AnalysisPlot:
         
         try:
             self.time = pd.read_csv(f"{self.shot_folder}/time.csv")
-            self.info = pd.read_csv(f"{self.shot_folder}/info.csv")
+            self.info = pd.read_excel(f"{self.shot_folder}/info.xlsx")
         except:
             raise Exception("Shot folder could not be read")
         ref_folder = self.info["shot_ref"].values[0]
+        if not ref_folder or str(ref_folder).lower() in ['nan', '', 'none']:
+            raise Exception("ShotRef folder not set for this analysis. Please ensure the reference is selected and available.")
         beam_folder = self.info["beam_ref"].values[0]
         fname = self.info["fname"].values[0]
         sweep_speed = self.info["sweep_speed"].values[0]
         slit_size = self.info["slit_size"].values[0]
-        ref_info = pd.read_csv(f"{ref_folder}/info.csv")
+        ref_info = pd.read_excel(f"{ref_folder}/info.xlsx")
         shear_angle = ref_info["shear"].values[0]
         correction = ImageCorrection(f"{beam_folder}/correction.csv")
         self.img = VISARImage(fname, sweep_speed = sweep_speed, slit_size = slit_size)

@@ -214,11 +214,9 @@ for col in ['Date_clean', 'DateSimple', 'ShotExtracted', 'VisarExtracted']:
 
 def determine_type(fname):
     if not isinstance(fname, str):
-        return "Other"
+        return "Other" #considering westbeam, west, pswest, nswest as "other"
     lower = fname.lower()
     if "timingref" in lower or "timing_ref" in lower:
-        return "BeamRef"
-    if "westbeam" in lower or "west" in lower or "psWest" in lower or "nswest" in lower:
         return "BeamRef"
     if "shot" in lower and "ref" in lower:
         return "ShotRef"
