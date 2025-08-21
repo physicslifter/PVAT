@@ -149,7 +149,7 @@ def parse_filename(fname, folder):
     datesimple = mmdd_to_datestr(mmdd)
     return datesimple, shot, visar
 
-folders = ["VISAR1", "VISAR2]
+folders = ["../JLF_2025/VISAR1", "../JLF_2025/VISAR2"]
 #folders = [os.path.join(data_dir, "VISAR1"), os.path.join(data_dir, "VISAR2")]
 
 all_files = []

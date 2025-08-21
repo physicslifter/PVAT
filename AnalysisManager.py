@@ -264,3 +264,18 @@ class AnalysisManager:
         analysis_path = os.path.join(self.base_directory, analysis_name)
         if os.path.exists(analysis_path):
             shutil.rmtree(analysis_path)
+
+class ShotAM:
+    def __init__(self):
+        pass
+
+    def create_new_analysis(self, shot_ID, beam_ref = None):
+        """Creates a new analysis for the shot
+
+        Args:
+            beam_ref (str, optional): folder path for the beam reference to use Defaults to None.
+        """
+        p
+
+    def open_saved_analysis(self):
+        pass
