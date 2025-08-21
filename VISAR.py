@@ -135,7 +135,8 @@ class VISARImage:
 
     def align_space(self):
         self.space = np.linspace(0, self.slit_size, self.data.shape[0])
-        #self.space = np.arange(self.data.shape[0])
+        if type(self.slit_size) == type(None):
+            self.space = np.arange(self.data.shape[0])
         self.space_aligned = True
         self.space_per_pixel = self.space[1] - self.space[0]
 
