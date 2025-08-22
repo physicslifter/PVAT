@@ -1061,6 +1061,12 @@ class AnalysisPlot:
         self.has_fft_lineout = False
         self.transformed = False
         self.has_phase = False
+        self.gauss_applied = False
+        self.median_applied = False
+        self.median_x = np.nan
+        self.median_y = np.nan
+        self.normalized = False
+        self.phase_zeroed = False
 
     def open_shot(self):
         if not os.path.exists(self.shot_folder):
@@ -1377,6 +1383,7 @@ class AnalysisPlot:
             self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
             self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
             print("Gaussian filtered")
+            self.gauss_applied = True
             self.vpf_applied = False
             self.fig.canvas.draw_idle()
 
@@ -1395,6 +1402,9 @@ class AnalysisPlot:
             self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
             print("Median filtered")
             self.vpf_applied = False
+            self.median_applied = True
+            self.median_x = self.median_x_entry.text
+            self.median_y = self.median_y_entry.text
             self.fig.canvas.draw_idle()
 
     def click_zero_phase(self, val):
@@ -1414,6 +1424,7 @@ class AnalysisPlot:
             self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
             self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
             print("Phase zeroed")
+            self.phase_zeroed = True
             self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
             self.fig.canvas.draw_idle()
 
@@ -1428,6 +1439,46 @@ class AnalysisPlot:
         self.velocity_lineout_ax.set_ylim(self.velocity.min(), self.velocity.max())
         self.fig.canvas.draw_idle()
         self.vpf_applied = True
+
+    def click_save(self, val):
+        """
+        procedure to execute when clicking save in the analysis plot
+        """
+        save = {}
+
+        #save bounds (upper/lower for x and y and the reference lineout)
+        save["x_bounds"] = [i for i in self.x_slider.val]
+        save["y_bounds"] = [i for i in self.y_slider.val]
+        save["ref_bounds"] = [i for i in self.ref_slider.val]
+
+        #Save fft filter values
+        save["fft_filter"] = [i for i in self.fft_slider.val]
+
+        #save whether the phase has been normalized to the reference
+        save["normalized"] = self.normalized
+
+        #save the transformations that have been applied
+        save["gauss_applied"] = self.gauss_applied
+        save["median_applied"] = self.median_applied
+        save["median_x"] = self.median_x
+        save["median_y"] = self.median_y
+
+        #save the vpf and whether it has been applied
+        save["vpf"] = float(self.vpf_box.text)
+        save["vpf_applied"] = self.vpf_applied
+
+        #save the velocity lineout bounds
+        save["velo_lineout_bounds"] = [i for i in self.velo_slider.val]
+
+        #save whether the phase has been zeroed
+        save["phase_zeroed"] = self.phase_zeroed
+
+        #save the velocity lineout
+        phase_time = np.linspace(self.x_slider.val[0], self.x_slider.val[1], self.phase.shape[1])
+        velo_df = pd.DataFrame({"time": phase_time, "velo": self.velocity})
+        velo_df.to_csv(f"{self.shot_folder}/velocity.csv")
+        params_df = pd.DataFrame(save)
+        params_df.to_csv(f"{self.shot_folder}/analysis_params.csv")
 
     def click_ref_norm(self, val):
         """
@@ -1465,6 +1516,7 @@ class AnalysisPlot:
         self.min_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[0], self.velo_slider.val[0]], color = "red")
         self.max_phase_lineout = self.phase_ax.plot([self.x_slider.val[0], self.x_slider.val[1]], [self.velo_slider.val[1], self.velo_slider.val[1]], color = "red")
         self.fig.canvas.draw_idle()
+        self.normalized = True
 
     def set_sliders(self):
         self.x_slider.on_changed(self.update_x_slider)
@@ -1482,6 +1534,7 @@ class AnalysisPlot:
         self.zero_phase_button.on_clicked(self.click_zero_phase)
         self.vpf_button.on_clicked(self.click_vpf)
         self.ref_norm_button.on_clicked(self.click_ref_norm)
+        self.save_phase_button.on_clicked(self.click_save)
 
     def show_plot(self):
         self.initialize_plot()
