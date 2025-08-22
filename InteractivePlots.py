@@ -325,8 +325,7 @@ class BeamAligner:
         pass
 
     def get_lineout_save_name(self):
-        if type(self.timing_save_name) == type(None):
-            self.timing_save_name = f"{self.ref.folder}/lineouts.csv"
+        self.timing_save_name = f"{self.ref.folder}/lineouts.csv"
 
     def click_save_time_cal(self, val):
         self.get_lineout_save_name()
@@ -392,6 +391,16 @@ class BeamAligner:
             if not df.empty:
                 self.set_state_from_dict(df.iloc[0].to_dict())
 
+    def save_info(self):
+        """
+        Saves the information for the alignment
+        """
+        print(self.ref.fname, self.ref.sweep_speed, self.ref.slit_size)
+        #slit_size = "None" if type(self.ref.slit_size) == type(None) else self.ref.slit_size
+        slit_size = self.ref.slit_size
+        info = pd.DataFrame({"fpath": [self.ref.fname], "sweep_speed": [self.ref.sweep_speed], "slit_size": [slit_size]})
+        info.to_csv(f"{self.ref.folder}/info.csv")
+
     def show_plot(self):
         self.initialize_plot()
         if self.showing_visar == False:
@@ -404,6 +413,7 @@ class BeamAligner:
         self.set_buttons()
         self.load_progress()
         plt.show()
+        self.save_info()
 
 class ShotRefAligner:
     """

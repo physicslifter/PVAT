@@ -265,9 +265,81 @@ class AnalysisManager:
         if os.path.exists(analysis_path):
             shutil.rmtree(analysis_path)
 
+class BeamAM:
+    def __init__(self, base_analysis_folder:str):
+        if os.path.exists(base_analysis_folder) == False:
+            raise Exception("Base analysis folder not found")
+        self.base_analysis_folder = base_analysis_folder
+
+    def open_analysis(self, folder_path:str):
+        """Opens an analysis form the specified folder
+
+        Args:
+            folder_path (str): path for an existing beam analysis
+        """
+        try:
+            folder_contents = os.listdir(folder_path)
+        except:
+            raise Exception(f"{folder_path} is invalid")
+        files_if_completed = ["correction.csv", "lineout.csv", "info.csv"]#these files are present in the beam analysis folder if the analysis has been performed
+        has_files_test = [i in folder_contents for i in files_if_completed]
+        for file, result in zip(files_if_completed, has_files_test):
+            if result == False:
+                raise Exception(f"{file} not found in {folder_path}")
+        self.correction = ImageCorrection(f"{folder_path}/correction.csv")
+        self.lineout = pd.read_csv(f"{folder_path}/lineouts.csv")
+        self.info = pd.read_csv("info.csv")
+        self.sweep_speed = self.info.sweep_speed
+        self.slit_size = self.info.slit_size
+        self.fpath = self.info.fpath
+
+    def create_analysis(self, folder, sweep_speed, slit_size, img_path):
+        self.sweep_speed = sweep_speed
+        self.slit_size = slit_size
+        self.fpath = img_path
+        #check if the folder exists
+        if os.path.exists(f"{self.base_analysis_folder}/{folder}"):
+            raise Exception("Folder already exists, try a different name")
+        #check if img file exists
+        if os.path.exists(img_path) == False:
+            raise Exception("img file name not valid")
+        #if folder doesn't already exist, set up the file structure
+        os.mkdir(f"{self.base_analysis_folder}/{folder}")
+        ref_img = RefImage(fname = img_path, 
+                           folder = f"{self.base_analysis_folder}/{folder}",
+                           sweep_speed = sweep_speed,
+                           slit_size = slit_size
+                           )
+        beam_aligner = BeamAligner(ref_img)
+        beam_aligner.show_plot()
+
 class ShotAM:
-    def __init__(self):
-        pass
+    def __init__(self, beam_folder:str, base_analysis_folder:str):
+        """
+        Initialize the class
+
+        Args:
+            data_directory (str): folder containing VISAR data
+        """
+        self.beam_folder = beam_folder
+        self.base_analysis_folder == base_analysis_folder
+        self.test_base_folders()
+
+    def test_base_folders(self):
+        """
+        Tests validity of data directory and beam folder
+        """
+        #test beam alignment folder
+        try:
+            pass
+        except:
+            pass
+        
+    def get_info(self):
+        """
+        Pull information from the real_info.csv
+        """
+        self.info = pd.read_csv("real_info.csv")
 
     def create_new_analysis(self, shot_ID, beam_ref = None):
         """Creates a new analysis for the shot
@@ -275,7 +347,34 @@ class ShotAM:
         Args:
             beam_ref (str, optional): folder path for the beam reference to use Defaults to None.
         """
-        p
+        try:
+            self.shot_data = self.info[self.info["Shot no."] == shot_ID]
+        except:
+            raise Exception("Info not found for this shot")
+        
+    def setup_file_structure(self):
+        if self.shot_specified == False:
+            raise Exception("shot not yet specified")
+        #check if a folder exists for the shot
+
+        #get index of the current analysis
+
+        #set up files
+
+    def look_for_analysis(self):
+        pass
+
+    def get_shot_data(self, Shot_ID):
+        self.laser_power = shot_data["Laser Power (W/cm^2)"].values[0]
+        self.sweep_speed = shot_data["sweep_time"].values[0]
+        V1_data = shot_data[shot_data.VISAR == 1]
+        V2_data = shot_data[shot_data.VISAR == 2]
+        self.V1_etalon = V1_data.etalon.values[0]
+        self.V2_etalon = V2_data.etalon.values[0]
+        self.V1_fname = V1_data[V1_data.Type == "Shot"].filepath[0]
+        self.V1_ref_fname = V1_data[V1_data.Type == "ShotRef"].filepath[0]
+        self.V2_fname = V2_data[V2_data.Type == "Shot"].filepath[0]
+        self.V2_ref_fname = V2_data[V2_data.Type == "ShotRef"].filepath[0]
 
     def open_saved_analysis(self):
         pass
