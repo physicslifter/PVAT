@@ -3,9 +3,11 @@ Tests for AnalysisManager
 """
 from AnalysisManager import *
 import datetime
+import shutil
 
 sheindel_test = 0
-test_BeamAM = 1
+test_BeamAM = 0
+test_shotAM = 1
 
 if test_BeamAM == True:
     #set up BeamAM
@@ -21,6 +23,14 @@ if test_BeamAM == True:
         if file not in os.listdir(f"{manager.base_analysis_folder}/testBeamAM"):
             raise Exception(f"{file} not saved. Test failed!")
     print("Test passed!")
+
+if test_shotAM == True:
+    manager = ShotAM(V1_beam_folder = "testBeamAM",
+                     V2_beam_folder = "testBeamAM",
+                     base_analysis_folder = "Analysis/AnalysisTests",
+                     data_folder = "../JLF_2025")
+    manager.create_new_analysis(shot_ID = 73)
+    manager.align_V2_ref()
 
 if sheindel_test == True:
     parent_directory = "./python_analysis"  

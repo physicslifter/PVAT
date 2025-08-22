@@ -6,9 +6,9 @@ Tools for managing an analysis
 """
 
 import os
-from VISAR import VISARImage, RefImage, TimingRef
+from VISAR import *
 import pandas as pd
-from InteractivePlots import BeamAligner
+from InteractivePlots import *
 import shutil
 import re
 from datetime import datetime
@@ -278,17 +278,18 @@ class BeamAM:
             folder_path (str): path for an existing beam analysis
         """
         try:
-            folder_contents = os.listdir(folder_path)
+            print(f"{self.base_analysis_folder}/{folder_path}")
+            folder_contents = os.listdir(f"{self.base_analysis_folder}/{folder_path}")
         except:
             raise Exception(f"{folder_path} is invalid")
-        files_if_completed = ["correction.csv", "lineout.csv", "info.csv"]#these files are present in the beam analysis folder if the analysis has been performed
+        files_if_completed = ["correction.csv", "lineouts.csv", "info.csv"]#these files are present in the beam analysis folder if the analysis has been performed
         has_files_test = [i in folder_contents for i in files_if_completed]
         for file, result in zip(files_if_completed, has_files_test):
             if result == False:
-                raise Exception(f"{file} not found in {folder_path}")
-        self.correction = ImageCorrection(f"{folder_path}/correction.csv")
-        self.lineout = pd.read_csv(f"{folder_path}/lineouts.csv")
-        self.info = pd.read_csv("info.csv")
+                raise Exception(f"{file} not found in {self.base_analysis_folder}/{folder_path}")
+        self.correction = ImageCorrection(f"{self.base_analysis_folder}/{folder_path}/correction.csv")
+        self.lineout = pd.read_csv(f"{self.base_analysis_folder}/{folder_path}/lineouts.csv")
+        self.info = pd.read_csv(f"{self.base_analysis_folder}/{folder_path}/info.csv")
         self.sweep_speed = self.info.sweep_speed
         self.slit_size = self.info.slit_size
         self.fpath = self.info.fpath
@@ -314,16 +315,24 @@ class BeamAM:
         beam_aligner.show_plot()
 
 class ShotAM:
-    def __init__(self, beam_folder:str, base_analysis_folder:str):
-        """
-        Initialize the class
+    def __init__(self, V1_beam_folder:str, V2_beam_folder:str, base_analysis_folder:str, data_folder:str):
+        """Initialize
 
         Args:
-            data_directory (str): folder containing VISAR data
+            beam_folder (str): _description_
+            base_analysis_folder (str): _description_
+            data_folder (str): folder where VISAR data is stored
         """
-        self.beam_folder = beam_folder
-        self.base_analysis_folder == base_analysis_folder
+        self.V1_beam_folder = V1_beam_folder
+        self.V2_beam_folder = V2_beam_folder
+        self.base_analysis_folder = base_analysis_folder
+        self.data_folder = data_folder
+        self.V2_ref_aligned = False
+        self.V2_aligned = False
+        self.V1_ref_aligned = False
+        self.V1_aligned = False
         self.test_base_folders()
+        self.get_info()
 
     def test_base_folders(self):
         """
@@ -331,9 +340,13 @@ class ShotAM:
         """
         #test beam alignment folder
         try:
-            pass
+            #if base analysis is not valid, we'll catch it in the BeamAM
+            self.V1_beam_analysis = BeamAM(base_analysis_folder = self.base_analysis_folder)
+            self.V2_beam_analysis = BeamAM(base_analysis_folder = self.base_analysis_folder)
+            self.V1_beam_analysis.open_analysis(self.V1_beam_folder)
+            self.V2_beam_analysis.open_analysis(self.V2_beam_folder)
         except:
-            pass
+            raise Exception(f"Folders are invalid")
         
     def get_info(self):
         """
@@ -341,40 +354,115 @@ class ShotAM:
         """
         self.info = pd.read_csv("real_info.csv")
 
-    def create_new_analysis(self, shot_ID, beam_ref = None):
+    def create_new_analysis(self, shot_ID):
         """Creates a new analysis for the shot
 
         Args:
             beam_ref (str, optional): folder path for the beam reference to use Defaults to None.
         """
+        #test if information for this shot exists
         try:
             self.shot_data = self.info[self.info["Shot no."] == shot_ID]
         except:
             raise Exception("Info not found for this shot")
+        self.get_shot_data(shot_ID)
+        self.shot_specified = True
+        self.shot_ID = shot_ID
+        #if info exists, set up the folder structure
+        self.setup_file_structure()
         
     def setup_file_structure(self):
         if self.shot_specified == False:
             raise Exception("shot not yet specified")
         #check if a folder exists for the shot
+        if not os.path.exists(f"{self.base_analysis_folder}/{self.shot_ID}"):
+            os.mkdir(f"{self.base_analysis_folder}/{self.shot_ID}")
 
         #get index of the current analysis
+        index = len(os.listdir(f"{self.base_analysis_folder}/{self.shot_ID}"))
 
-        #set up files
-
-    def look_for_analysis(self):
-        pass
+        #set up folders
+        self.folder = f"{self.base_analysis_folder}/{self.shot_ID}/{index}"
+        os.mkdir(self.folder)
+        for dir in ["VISAR1", "VISAR2"]:
+            os.mkdir(f"{self.folder}/{dir}")
+            for dir2 in ["ShotRef", "Shot"]:
+                os.mkdir(f"{self.folder}/{dir}/{dir2}")
 
     def get_shot_data(self, Shot_ID):
+        shot_data = self.shot_data
         self.laser_power = shot_data["Laser Power (W/cm^2)"].values[0]
         self.sweep_speed = shot_data["sweep_time"].values[0]
+        self.slit_size = None
         V1_data = shot_data[shot_data.VISAR == 1]
         V2_data = shot_data[shot_data.VISAR == 2]
         self.V1_etalon = V1_data.etalon.values[0]
         self.V2_etalon = V2_data.etalon.values[0]
-        self.V1_fname = V1_data[V1_data.Type == "Shot"].filepath[0]
-        self.V1_ref_fname = V1_data[V1_data.Type == "ShotRef"].filepath[0]
-        self.V2_fname = V2_data[V2_data.Type == "Shot"].filepath[0]
-        self.V2_ref_fname = V2_data[V2_data.Type == "ShotRef"].filepath[0]
+        self.V1_fname = V1_data[V1_data.Type == "Shot"].filepath.values[0]
+        self.V1_ref_fname = V1_data[V1_data.Type == "ShotRef"].filepath.values[0]
+        self.V2_fname = V2_data[V2_data.Type == "Shot"].filepath.values[0]
+        self.V2_ref_fname = V2_data[V2_data.Type == "ShotRef"].filepath.values[0]
 
     def open_saved_analysis(self):
         pass
+
+    def align_V2_ref(self):
+        shot_ref = VISARImage(
+            f"{self.data_folder}/VISAR2/{self.V2_ref_fname}",
+            sweep_speed = self.sweep_speed,
+            slit_size = self.slit_size
+        )
+        shot_ref_aligner = ShotRefAligner(shot_ref)
+        shot_ref_aligner.set_beam_ref_folder(f"{self.base_analysis_folder}/{self.V2_beam_folder}")
+        shot_ref_aligner.set_folder(f"{self.folder}/VISAR2/ShotRef")
+        shot_ref_aligner.show_plot()
+        self.V2_ref_aligned = True
+            
+    def align_V2(self):
+        if self.V2_ref_aligned == False:
+            self.align_V2_ref()
+        shot = VISARImage(
+            fname = f"{self.data_folder}/VISAR2/{self.V2_fname}",
+            sweep_speed = self.sweep_speed,
+            slit_size = self.slit_size
+        )
+        shot_aligner = ShotAligner(shot)
+        shot_aligner.set_beam_ref_folder(f"{self.base_analysis_folder}/{self.V2_beam_folder}")
+        shot_aligner.set_shot_ref_folder(f"{self.folder}/VISAR2/ShotRef")
+        shot_aligner.set_folder(f"{self.folder}/VISAR2/Shot")
+        shot_aligner.show_plot()
+        self.V1_aligned = True
+
+    def align_V1_ref(self):
+        shot_ref = VISARImage(
+            f"{self.data_folder}/VISAR1/{self.V1_ref_fname}",
+            sweep_speed = self.sweep_speed,
+            slit_size = self.slit_size
+        )
+        shot_ref_aligner = ShotRefAligner(shot_ref)
+        shot_ref_aligner.set_beam_ref_folder(f"{self.base_analysis_folder}/{self.V1_beam_folder}")
+        shot_ref_aligner.set_folder(f"{self.folder}/VISAR1/ShotRef")
+        shot_ref_aligner.show_plot()
+        self.V1_ref_aligned = True
+            
+    def align_V1(self):
+        if self.V1_ref_aligned == False:
+            self.align_V1_ref()
+        
+        shot = VISARImage(
+            fname = f"{self.data_folder}/VISAR1/{self.V1_fname}",
+            sweep_speed = self.sweep_speed,
+            slit_size = self.slit_size
+        )
+        shot_aligner = ShotAligner(shot)
+        shot_aligner.set_beam_ref_folder(f"{self.base_analysis_folder}/{self.V1_beam_folder}")
+        shot_aligner.set_shot_ref_folder(f"{self.folder}/VISAR1/ShotRef")
+        shot_aligner.set_folder(f"{self.folder}/VISAR1/Shot")
+        shot_aligner.show_plot()
+        self.V1_aligned = True
+
+class AM:
+    """General class for managing an analysis
+    """
+    def __init__(self, base_folder):
+        self.base_folder = base_folder
