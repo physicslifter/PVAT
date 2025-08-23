@@ -139,7 +139,7 @@ class VISARImage:
             self.space = np.arange(self.data.shape[0])
             print(self.data.shape)
         else:
-            self.space = np.linspace(0, self.slit_size, self.data.shape[1])
+            self.space = np.linspace(0, self.slit_size, self.data.shape[0])
         self.space_aligned = True
         self.space_per_pixel = self.space[1] - self.space[0]
 
@@ -194,6 +194,7 @@ class VISARImage:
         self.vmin = vmin
         self.vmax = vmax
         X, Y = np.meshgrid(self.time, self.space)
+        st()
         self.visar_mesh = ax.pcolormesh(X, Y, data, norm = colors.LogNorm(vmin=vmin,vmax=vmax, clip=True), cmap='magma')
         if xlabel == True:
             ax.set_xlabel("Time (ns)")
