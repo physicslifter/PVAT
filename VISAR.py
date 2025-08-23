@@ -10,6 +10,7 @@ from tifffile import imwrite
 import shutil
 from math import tan, radians
 from scipy.ndimage import map_coordinates
+from pdb import set_trace as st
 
 #Helper functions
 def gaussian(x, a, b, c, background):
@@ -134,7 +135,7 @@ class VISARImage:
         self.time_aligned = True
 
     def align_space(self):
-        if type(self.slit_size) == type(None):
+        if type(self.slit_size) == type(None) or np.isnan(self.slit_size) == True:
             self.space = np.arange(self.data.shape[0])
             print(self.data.shape)
         else:
