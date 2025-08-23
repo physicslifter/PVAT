@@ -431,7 +431,7 @@ class ShotAM:
         shot_aligner.set_shot_ref_folder(f"{self.folder}/VISAR2/ShotRef")
         shot_aligner.set_folder(f"{self.folder}/VISAR2/Shot")
         shot_aligner.show_plot()
-        self.V1_aligned = True
+        self.V2_aligned = True
 
     def align_V1_ref(self):
         shot_ref = VISARImage(
@@ -460,6 +460,24 @@ class ShotAM:
         shot_aligner.set_folder(f"{self.folder}/VISAR1/Shot")
         shot_aligner.show_plot()
         self.V1_aligned = True
+
+    def analyze(self, VISAR_num):
+        if VISAR_num not in [1, 2]:
+            raise Exception(f"VISAR must be 1 or 2. {VISAR_num} is invalid")
+        if VISAR_num == 1:
+            if self.V1_aligned == False:
+                self.align_V1()
+        else:
+            if self.V2_aligned == False:
+                self.align_V2()
+        analysis_plot = AnalysisPlot(f"{self.folder}/VISAR{VISAR_num}/Shot")
+        analysis_plot.show_plot()
+
+    def open_analysis(self):
+        """
+        opening an analysis
+        """
+        pass
 
 class AM:
     """General class for managing an analysis
