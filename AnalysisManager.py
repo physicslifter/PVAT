@@ -12,6 +12,8 @@ from InteractivePlots import *
 import shutil
 import re
 from datetime import datetime
+import warnings
+import math
 
 INFO_COLS = [
     "Name", "Shot no.", "Visar", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", 
@@ -315,24 +317,32 @@ class BeamAM:
         beam_aligner.show_plot()
 
 class ShotAM:
-    def __init__(self, V1_beam_folder:str, V2_beam_folder:str, base_analysis_folder:str, data_folder:str):
-        """Initialize
-
-        Args:
-            beam_folder (str): _description_
-            base_analysis_folder (str): _description_
-            data_folder (str): folder where VISAR data is stored
-        """
-        self.V1_beam_folder = V1_beam_folder
-        self.V2_beam_folder = V2_beam_folder
-        self.base_analysis_folder = base_analysis_folder
-        self.data_folder = data_folder
+    def __init__(self, V1_beam_folder:str = None, V2_beam_folder:str = None, base_analysis_folder:str = None, data_folder:str = None):
+        #test the inputs
+        inputs = [V1_beam_folder, V2_beam_folder, base_analysis_folder, data_folder]
+        input_test = [False if type(i) == type(None) else True for i in inputs]
+        #if all are none, proceed w/o doing anything
+        if sum(input_test) == 0:
+            pass
+        #if all have string inputs, set the folders
+        elif math.prod(input_test) == 1:
+            self.set_folders(V1_beam_folder, V2_beam_folder, base_analysis_folder, data_folder)
+        #if some are string, but some are none, raise a warning
+            warnings.warn("Not all inputs passed in. Use set_folders() method to set up the directory")
         self.V2_ref_aligned = False
         self.V2_aligned = False
         self.V1_ref_aligned = False
         self.V1_aligned = False
-        self.test_base_folders()
+        self.V1_analyzed = False
+        self.V2_analyzed = False
         self.get_info()
+
+    def set_folders(self, V1_beam_folder:str, V2_beam_folder:str, base_analysis_folder:str, data_folder:str):
+        self.V1_beam_folder = V1_beam_folder
+        self.V2_beam_folder = V2_beam_folder
+        self.base_analysis_folder = base_analysis_folder
+        self.data_folder = data_folder
+        self.test_base_folders()
 
     def test_base_folders(self):
         """
@@ -346,6 +356,7 @@ class ShotAM:
             self.V1_beam_analysis.open_analysis(self.V1_beam_folder)
             self.V2_beam_analysis.open_analysis(self.V2_beam_folder)
         except:
+            print(self.base_analysis_folder, self.V1_beam_folder, self.V2_beam_folder)
             raise Exception(f"Folders are invalid")
         
     def get_info(self):
@@ -389,6 +400,13 @@ class ShotAM:
             for dir2 in ["ShotRef", "Shot"]:
                 os.mkdir(f"{self.folder}/{dir}/{dir2}")
 
+        #add info.csv for the analysis
+        self.info = {
+            "shot_ID": self.shot_ID,
+        }
+        info_df = pd.DataFrame(self.info)
+        info_df.to_csv("info.csv")
+
     def get_shot_data(self, Shot_ID):
         shot_data = self.shot_data
         self.laser_power = shot_data["Laser Power (W/cm^2)"].values[0]
@@ -402,9 +420,6 @@ class ShotAM:
         self.V1_ref_fname = V1_data[V1_data.Type == "ShotRef"].filepath.values[0]
         self.V2_fname = V2_data[V2_data.Type == "Shot"].filepath.values[0]
         self.V2_ref_fname = V2_data[V2_data.Type == "ShotRef"].filepath.values[0]
-
-    def open_saved_analysis(self):
-        pass
 
     def align_V2_ref(self):
         shot_ref = VISARImage(
@@ -472,12 +487,74 @@ class ShotAM:
                 self.align_V2()
         analysis_plot = AnalysisPlot(f"{self.folder}/VISAR{VISAR_num}/Shot")
         analysis_plot.show_plot()
+        if VISAR_num == 2:
+            self.V2_analyzed = True
+        else:
+            self.V1_analyzed = True
 
-    def open_analysis(self):
+    def get_analysis_state(self, folder):
+        """Generate an analysis state for the directory
+
+        Args:
+            dir (_type_): directory for the analysis
+
+        Raises:
+            Exception: folder does not exist
+            Exception: folder exists, but proper file structure does not
+            Exception: folder and VISAR folders exist, but proper file structure does not
         """
-        opening an analysis
+        analysis_state = {
+            "VISAR1":{
+                "ref_aligned": False,
+                "shot_aligned": False,
+                "has_velo": False
+            },
+            "VISAR1":{
+                "ref_aligned": False,
+                "shot_aligned": False,
+                "has_velo": False
+            }
+        }
+        #test for directory existence
+        if os.path.exists(folder) == False: #throw exception if folder is invalid
+            raise Exception(f"Folder {folder} is an invalid directory (could not be found)")
+        if os.path.exists(f"{folder}/info.csv") == False:
+            raise Exception(f"info.csv not found in {folder}")
+        #look for VISAR1 & VISAR2 folders
+        for V in ["VISAR1", "VISAR2"]:
+            if os.path.exists(f"{folder}/{V}"):
+            #look for Shot and ShotRef folders inside directory
+                for subfolder in ["Shot", "ShotRef"]:
+                    if os.path.exists(f"{folder}/{V}/{subfolder}"):
+                        #get state of the analysis
+                        if os.path.exists(f"{folder}/{V}/{subfolder}/time.csv") and os.path.exists(f"{folder}/{V}/{subfolder}/time.csv"):
+                            key = "ref_aligned" if subfolder == "ShotRef" else "shot_aligned"
+                            analysis_state[V][key] = True
+                        if subfolder == "Shot":
+                            if os.path.exists(f"{folder}/{V}/{subfolder}/analysis_parameters.csv") and os.path.exists(f"{folder}/{V}/{subfolder}/velocity.csv"):
+                                analysis_state[V]["has_velo"] = True
+                    else:
+                        raise Exception(f"subfolder {folder}/{subfolder} does not exist")
+            else:
+                raise Exception(f"{V} not found in {folder}")
+
+        #return True/False for pass/fail and the state of the current directory if valid
+        return analysis_state
+
+    def open_analysis(self, folder:str):
         """
-        pass
+        opening a saved analysis
+        """
+        state = self.get_analysis_state(folder)
+        self.folder = folder
+        self.V1_ref_aligned = state["VISAR1"]["ref_aligned"]
+        self.V1_aligned = state["VISAR1"]["shot_aligned"]
+        self.V1_analyzed = state["VISAR1"]["has_velo"]
+        self.V2_ref_aligned = state["VISAR2"]["ref_aligned"]
+        self.V2_aligned = state["VISAR2"]["shot_aligned"]
+        self.V2_analyzed = state["VISAR2"]["has_velo"]
+
+        
 
 class AM:
     """General class for managing an analysis
