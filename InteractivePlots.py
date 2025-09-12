@@ -125,6 +125,161 @@ class ManualRefChop:
     def __init__(self, ref_img):
         self.ref = ref_img
 
+class ManualBeamAlignment:
+    """
+    Interactive plot for aligning a beam
+    """
+    def __init__(self, ref_image:RefImage, beam_min, beam_max, num_chops:int):
+        self.img = ref_image.img
+        self.ref_image = ref_image
+        self.beam_min = beam_min
+        self.beam_max = beam_max
+        self.num_chops = num_chops
+        self.disp_img = self.img
+        #self.disp_img.chop_by_space(beam_min, beam_max) #chop image to fit the beam bounds
+        self.chop_spacing = (beam_max - beam_min)/num_chops
+        self.beam_locs = np.arange(0, num_chops)*self.chop_spacing + self.chop_spacing
+        print(self.beam_locs)
+        self.beam_locs = np.array([int(i) for i in self.beam_locs])
+        print(self.beam_locs)
+        self.locs = {}
+        for loc in self.beam_locs:
+            self.locs[loc] = np.nan
+        print(self.locs)
+
+    def initialize_plot(self):
+        #set up plot
+        self.fig = plt.figure(figsize = (15, 6))
+        self.visar_ax = self.fig.add_subplot(1, 2, 1)
+        self.disp_img.show_data(self.visar_ax)
+        self.lineout_ax = self.fig.add_subplot(1, 2, 2, sharex = self.visar_ax)
+        self.fig.subplots_adjust(bottom = 0.3, left = 0.1)
+
+        #set up sliders
+        self.chop_slider_ax = self.fig.add_axes([0.15, 0.1, 0.25, 0.05])
+        self.chop_slider = Slider(self.chop_slider_ax, "Chop Num", 0, self.num_chops - 1, valfmt='%0.0f', valstep = 1)
+        self.center_slider_ax = self.fig.add_axes([0.6, 0.2, 0.3, 0.05])
+        self.center_slider = Slider(ax = self.center_slider_ax, label = "Center", valmin = self.img.time.min(), valmax = self.img.time.max(), valinit = 0.5*(self.img.time.max() - self.img.time.min()))
+        self.colormap_slider_ax = self.fig.add_axes([0.15, 0.15, 0.25, 0.05])
+        self.colormap_slider = RangeSlider(self.colormap_slider_ax, "Heatmap Threshold", self.img.data.min(), self.img.data.max())
+        self.time_bounds_slider_ax = self.fig.add_axes([0.15, 0.05, 0.25, 0.05])
+        self.time_bounds_slider = RangeSlider(self.time_bounds_slider_ax, "time bounds", self.img.time.min(), self.img.time.max(), valinit = [self.img.time.min(), self.img.time.max()])
+
+        #set up buttons
+        self.mark_center_button_ax = self.fig.add_axes([0.7, 0.05, 0.1, 0.1])
+        self.mark_center_button = Button(self.mark_center_button_ax, "Mark\n Center")
+        self.save_button_ax = self.fig.add_axes([0.85, 0.05, 0.1, 0.1])
+        self.save_button = Button(self.save_button_ax, "Save", color = "salmon")
+
+        #set up tracker for the shots
+        self.shot_tracker_ax = self.fig.add_axes([0.9, 0.3, 0.1, 0.6])
+        self.shot_tracker_ax.hlines([np.arange(self.num_chops + 1)], xmin = 0, xmax = 1, zorder = 15)
+        self.shot_tracker_ax.vlines([0, 1], ymin = 0, ymax = self.num_chops, zorder = 15)
+        self.shot_tracker_ax.set_axis_off()
+        self.tracker_fills = []
+        for i in range(self.num_chops):
+            self.shot_tracker_ax.text(0.5, i + 0.5, f"{i}", va = "center", ha = "center")
+            self.tracker_fills.append(self.shot_tracker_ax.fill_between(x = [0, 1], y1 = [i, i], y2 = [i + 1, i + 1], color = "red", zorder = 0))
+        #tracker should be a series of boxes of length num_chops
+        #boxes are red for chops w/o the center marked
+        #boxes are green for chops w/ center
+        #if not all centers have been marked, nothing will happen when you hit save
+        
+        #show data
+
+    def setup_visar_chops(self):
+        self.bounding_vert_left = self.visar_ax.plot([self.img.time[0], self.img.time[0]], [self.img.space[0], self.img.space[-1]], color = "dodgerblue")
+        self.bounding_vert_right = self.visar_ax.plot([self.img.time[-1], self.img.time[-1]], [self.img.space[0], self.img.space[-1]], color = "dodgerblue")
+        self.visar_ax.hlines([np.arange(self.num_chops + 1)*((self.beam_max - self.beam_min)/self.num_chops) + self.beam_min], xmin = self.img.time[0], xmax = self.img.time[-1], color = "dodgerblue")
+        self.chop_highlighter = self.visar_ax.fill_between([self.time_bounds_slider.val[0], self.time_bounds_slider.val[1]], y1 = [self.beam_min, self.beam_min], y2 = [self.beam_min + self.chop_spacing, self.beam_min + self.chop_spacing], color = "lime", alpha = 0.3)
+
+    def setup_lineout(self):
+        lineout = self.img.take_lineout(self.beam_min, self.beam_min + self.chop_spacing)
+        self.lineout = self.lineout_ax.plot(self.img.time, lineout, label = "lineout")
+        self.center_line = self.lineout_ax.plot([self.center_slider.val, self.center_slider.val], [lineout.min(), lineout.max()], color = "red", label = "center")
+        self.visar_center = self.visar_ax.plot([self.center_slider.val, self.center_slider.val], [self.img.space.min(), self.img.space.max()], color = "lime")
+
+    def update_colormap_slider(self, val):
+        self.img.update_heatmap_threshold(vmin = val[0], vmax = val[1])
+        self.fig.canvas.draw_idle()
+
+    def update_time_bounds_slider(self, val):
+        self.visar_ax.set_xlim(val[0], val[1])
+        self.bounding_vert_left[0].set_xdata([val[0]])
+        self.bounding_vert_right[0].set_xdata([val[1]])
+        self.center_slider.valmin, self.center_slider.valmax = val
+        self.center_slider_ax.set_xlim(val[0], val[1])
+        if self.center_slider.val < val[0]:
+            self.center_slider.set_val(val[0])
+        if self.center_slider.val > val[1]:
+            self.center_slider.set_val(val[1])
+        self.fig.canvas.draw_idle()
+
+    def update_center_slider(self, val):
+        self.center_line[0].set_xdata([val, val])
+        self.visar_center[0].set_xdata([val, val])
+        self.fig.canvas.draw_idle()
+
+    def update_chop_slider(self, val):
+        #highlighting
+        dummy = self.visar_ax.fill_between([self.time_bounds_slider.val[0], self.time_bounds_slider.val[1]], y1 = [self.beam_min + val*self.chop_spacing, self.beam_min + val*self.chop_spacing], y2 = [self.beam_min + (val + 1)*self.chop_spacing, self.beam_min + (val + 1)*self.chop_spacing], color = "lime", alpha = 0.3)
+        dp = dummy.get_paths()[0]
+        dummy.remove()
+        self.chop_highlighter.set_paths([dp.vertices])
+        #lineout
+        lineout = self.img.take_lineout(self.beam_min + val*self.chop_spacing, self.beam_min + (val+1)*self.chop_spacing)
+        print(self.beam_min + val*self.chop_spacing, self.beam_min + (val+1)*self.chop_spacing, self.img.space.min(), self.img.space.max())
+        self.lineout[0].set_ydata(lineout)
+        self.fig.canvas.draw_idle()
+        self.lineout_ax.set_ylim(lineout.min(), lineout.max())
+
+    def click_mark_center(self, val):
+        #update the location for the center
+        location = int(self.chop_slider.val*self.chop_spacing + self.chop_spacing)
+        self.locs[location] = self.center_slider.val
+        print(self.locs)
+        #update the tracker
+        #self.shot_tracker_ax.fill_between(x = [0, 1], y1 = [self.chop_slider.val, self.chop_slider.val], y2 = [self.chop_slider.val + 1, self.chop_slider.val + 1], zorder = 10)
+        #self.shot_tracker_ax.text(0.5, self.chop_slider.val + 0.5, va = "center", ha = "center")
+        self.tracker_fills[self.chop_slider.val].set_facecolor("lime")
+        self.fig.canvas.draw_idle()
+
+    def click_save(self, val):
+        test_pass = True
+        for key in self.locs.keys():
+            if np.isnan(key) == True:
+                test_pass = False
+        print(self.locs, test_pass)
+        return_val = np.nan
+        if test_pass == True:
+            correction = ImageCorrection()
+            vals = [self.locs[beam_loc] for beam_loc in self.beam_locs]
+            initial_val = vals[-1]
+            vals = [initial_val - val for val in vals]
+            print(self.beam_locs)
+            correction.create(space = self.beam_locs[::-1], time_shift = vals[::-1])
+            print(self.beam_locs[::-1], vals[::-1])
+            correction.save(fname = f"{self.ref_image.folder}/correction.csv")
+
+    def set_sliders(self):
+        self.colormap_slider.on_changed(self.update_colormap_slider)
+        self.time_bounds_slider.on_changed(self.update_time_bounds_slider)
+        self.center_slider.on_changed(self.update_center_slider)
+        self.chop_slider.on_changed(self.update_chop_slider)
+
+    def set_buttons(self):
+        self.mark_center_button.on_clicked(self.click_mark_center)
+        self.save_button.on_clicked(self.click_save)
+
+    def show_plot(self):
+        self.initialize_plot()
+        self.setup_visar_chops()
+        self.setup_lineout()
+        self.set_sliders()
+        self.set_buttons()
+        self.lineout_ax.legend()
+        self.visar_ax.set_ylim(self.beam_min, self.beam_max)
+        plt.show()
 
 class BeamAligner:
     """
@@ -139,6 +294,9 @@ class BeamAligner:
         self.has_chop = False
         self.correction_save_name = None
         self.timing_save_name = None
+        self.manual_chop = False
+        self.has_manual_correction = False
+        self.has_correction = False
         #self.ref.img.data = ndimage.uniform_filter(self.ref.img.data, size = (int(len(self.ref.img.space)/50), int(len(self.ref.img.time)/50)))
         #self.ref.img.data = ndimage.minimum_filter(self.ref.img.data, size = (int(len(self.ref.img.space)/50), int(len(self.ref.img.time)/50)))
         #self.ref.img.data[self.ref.img.data < np.median(self.ref.img.data)/2] = 0.01
@@ -171,7 +329,7 @@ class BeamAligner:
         #add sliders to the plot
         self.beam_lineout_slider = RangeSlider(self.lineout_slider_ax, "Beam Lineout", self.ref.img.space.min(), self.ref.img.space.max(), valinit = [beam_slider_min, beam_slider_max])
         self.colormap_slider = RangeSlider(self.colormap_slider_ax, "Heatmap Threshold", self.ref.img.data.min(), self.ref.img.data.max())
-        self.chopper_slider = Slider(self.chopper_slider_ax, "Num Chops", 1, 100, valinit = 10)
+        self.chopper_slider = Slider(self.chopper_slider_ax, "Num Chops", 1, 100, valinit = 10, valstep = 1)
         self.fiducial_lineout_slider = RangeSlider(self.fiducual_lineout_slider_ax, "Fiducial\nLineout", self.ref.img.space.min(), self.ref.img.space.max(), valinit = [fiducial_slider_min, fiducial_slider_max])
         self.time_shift_slider = Slider(self.time_shift_slider_ax, "Start Time", self.ref.img.time.min(), self.ref.img.time.max(), valinit = 0)
 
@@ -282,6 +440,7 @@ class BeamAligner:
     def click_get_chop(self, val):
         self.ref.chop_beam(ybounds = (self.beam_lineout_slider.val[0], self.beam_lineout_slider.val[1]), num_slices = int(self.chopper_slider.val))
         self.ref.plot_chop(minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+        self.has_correction = True
 
     def click_zero_time(self, val):
         self.take_lineouts()
@@ -304,31 +463,50 @@ class BeamAligner:
         self.timing_save_name = fname
 
     def click_apply_correction(self, val):
+        #look to see if the correction has been savewd
+        print("checking ...")
+        if os.path.exists(f"{self.ref.folder}/correction.csv"):
+            self.has_correction = True
         #Save the correction
-        self.ref.save_chop_as_correction() #saves most recent chop as the correction
+        print(self.has_correction)
+        if self.has_correction == True:
+            if self.manual_chop == False:
+                self.ref.save_chop_as_correction() #saves most recent chop as the correction
         
-        #Apply the correction to the data
-        self.ref.img.apply_correction(self.ref.correction)
-        self.ref.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
+                #Apply the correction to the data
+                self.ref.img.apply_correction(self.ref.correction)
+            else:
+                try:
+                    correction = ImageCorrection(f"{self.ref.folder}/correction.csv")
+                    self.ref.img.apply_correction(correction)
+                    print("Manual correction found")
+                except:
+                    print("Correction not found")
+            
+            self.ref.img.show_data(self.img_ax, minmax = (self.colormap_slider.val[0], self.colormap_slider.val[1]))
 
-        #update slider values
-        self.time_shift_slider.valmin = self.ref.img.time.min()
-        self.time_shift_slider.valmax = self.ref.img.time.max()
+            #update slider values
+            self.time_shift_slider.valmin = self.ref.img.time.min()
+            self.time_shift_slider.valmax = self.ref.img.time.max()
 
-        self.fig.canvas.draw_idle()
+            self.fig.canvas.draw_idle()
 
-    def click_manual_chop(self):
+    def click_manual_chop(self, val):
         """
-        Let's user perform a manual chop by hand
+        Lets user perform a manual chop by hand
         This is useful if the program has trouble fitting the peaks
         """
-        pass
+        self.manual_chop = True
+        manual_aligner = ManualBeamAlignment(ref_image = self.ref, beam_min = self.beam_lineout_slider.val[0], beam_max = self.beam_lineout_slider.val[1], num_chops = self.chopper_slider.val)
+        self.ref.beam_chopped = True
+        manual_aligner.show_plot()
 
     def get_lineout_save_name(self):
         self.timing_save_name = f"{self.ref.folder}/lineouts.csv"
 
     def click_save_time_cal(self, val):
         self.get_lineout_save_name()
+        self.has_correction = True
         print(self.timing_save_name)
         if self.timing_save_name != None:
             fiducial_lineout = self.fiducial_lineout.get_ydata()
@@ -354,6 +532,7 @@ class BeamAligner:
         self.apply_correction_button.on_clicked(self.click_apply_correction)
         self.center_time_button.on_clicked(self.click_zero_time)
         self.save_time_calibration_button.on_clicked(self.click_save_time_cal)
+        self.manual_chop_button.on_clicked(self.click_manual_chop)
 
     def get_state_dict(self):
         return {
@@ -414,6 +593,7 @@ class BeamAligner:
         self.load_progress()
         plt.show()
         self.save_info()
+
 
 class ShotRefAligner:
     """
@@ -563,7 +743,6 @@ class ShotRefAligner:
 
     def click_apply_beam_calibration(self, val):
         correction_path = os.path.join(self.beam_ref, "correction.csv")
-        print(f"DEBUG: self.beam_ref = {self.beam_ref}")
         if not self.beam_ref or not os.path.exists(self.beam_ref):
             print(f"[ERROR] BeamRef folder is not set or does not exist: {self.beam_ref}")
             return

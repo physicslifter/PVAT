@@ -147,8 +147,9 @@ class VISARImage:
         """
         takes horizontal lineout between min and max values
         """
-        min = int(min/self.space_per_pixel)
-        max = int(max/self.space_per_pixel)
+        min = int((min - self.space.min())/self.space_per_pixel)
+        max = int((max - self.space.min())/self.space_per_pixel)
+        print(min, max, self.data.shape)
         self.lineout = self.data[min:max].mean(axis = 0)
         return self.lineout
     
@@ -194,7 +195,6 @@ class VISARImage:
         self.vmin = vmin
         self.vmax = vmax
         X, Y = np.meshgrid(self.time, self.space)
-        st()
         self.visar_mesh = ax.pcolormesh(X, Y, data, norm = colors.LogNorm(vmin=vmin,vmax=vmax, clip=True), cmap='magma')
         if xlabel == True:
             ax.set_xlabel("Time (ns)")
@@ -336,6 +336,8 @@ class VISARImage:
             #print(chunk)
         #Put chunks back together to get new data
         self.data = np.vstack(chunks)
+        self.space_aligned = False
+        self.align_space()
         #get new time axis
         self.data = np.nan_to_num(self.data, nan = 0)
         new_min = min(self.time) + min_neg_shift*self.time_resolution

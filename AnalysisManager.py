@@ -404,7 +404,8 @@ class ShotAM:
         self.info = {
             "shot_ID": self.shot_ID,
         }
-        info_df = pd.DataFrame(self.info)
+        print(self.info)
+        info_df = pd.DataFrame(self.info, index = [0])
         info_df.to_csv("info.csv")
 
     def get_shot_data(self, Shot_ID):
