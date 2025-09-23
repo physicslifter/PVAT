@@ -1232,9 +1232,9 @@ class AnalysisPlot:
     """
     Class for performing the actual analysis once everything has been calibrated
     """
-    def __init__(self, shot_folder):
+    def __init__(self, shot_folder, apply_beam_correction:bool = True):
         self.shot_folder = shot_folder
-        self.open_shot()
+        self.open_shot(apply_beam_correction)
         self.showing_visar = False
         self.showing_phase_region = False
         self.has_fft_lineout = False
@@ -1247,7 +1247,7 @@ class AnalysisPlot:
         self.normalized = False
         self.phase_zeroed = False
 
-    def open_shot(self):
+    def open_shot(self, apply_beam_correction:bool=True):
         if not os.path.exists(self.shot_folder):
             raise Exception("Folder path not valid")
         try:
@@ -1267,7 +1267,8 @@ class AnalysisPlot:
         self.correction = ImageCorrection(f"{self.beam_folder}/correction.csv")
         self.img = VISARImage(fname, sweep_speed = self.sweep_speed, slit_size = self.slit_size)
         print("\n\n\n====\n\n\n")
-        self.img.apply_correction(self.correction) #apply beam correction
+        if apply_beam_correction == True:
+            self.img.apply_correction(self.correction) #apply beam correction
         self.img.shear_data(self.shear_angle) #apply shear from shot ref
         self.img.align_time(self.time.time)
         

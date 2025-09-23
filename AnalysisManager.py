@@ -14,6 +14,8 @@ import re
 from datetime import datetime
 import warnings
 import math
+from matplotlib import gridspec
+from matplotlib import ticker as mticker
 
 INFO_COLS = [
     "Name", "Shot no.", "Visar", "Type", "Filename", "Filepath", "DataSource", "sweep_speed", 
@@ -75,6 +77,269 @@ def extract_shot_visar(name):
     if m:
         return m.group(1), m.group(2)
     return None, None
+
+def write_shot_report(folder:str):
+    """
+    Given a shot folder, write the report on that folder
+    """
+    #=====
+    #Check whether folder is valid & has all data
+    for subfolder in ["VISAR1", "VISAR2"]:
+        for visar_folder in ["ShotRef", "Shot"]:
+            if not os.path.exists(f"{folder}/{subfolder}/{visar_folder}"):
+                raise Exception(f"folder invalid. {folder}/{subfolder}/{visar_folder} not found")
+            #ensure info csv exists for all
+
+            #ensure timing/lineouts exist for all
+    #=====
+
+    #=====
+    #Set up the plot
+    fig = plt.figure(figsize = (16, 9))
+    gs0 = gridspec.GridSpec(4, 3, figure = fig)
+
+    gsV1 = gridspec.GridSpecFromSubplotSpec(2, 5, subplot_spec = gs0[:2, 1:])
+    gsV2 = gridspec.GridSpecFromSubplotSpec(2, 5, subplot_spec = gs0[2:, 1:])
+
+    V1_axes = {}
+    V2_axes = {}
+    plot_names = ["beam", "corrected_beam", "shot", "corrected_shot", "timing", "phase_region", "fourier_bounds", "fourier_filtered",  "phase", "normalized_+_filtered"]
+
+    V1_outer_gs = gridspec.GridSpec(1, 1)
+    V1_outer_gs.update(bottom=.50,left=0.33333, right=1,top=1)
+    V1_outer = fig.add_subplot(V1_outer_gs[:])
+    #V1_outer.set_ylabel("VISAR 1", size = 25, fontweight = "bold")
+    V1_outer.tick_params(axis='both', which='both', bottom=0, left=0, labelbottom=0, labelleft=0)
+    V1_outer.set_facecolor("lightsalmon")
+    V2_outer_gs = gridspec.GridSpec(1, 1)
+    V2_outer_gs.update(bottom=0,left=0.33333, right=1,top=0.5)
+    V2_outer = fig.add_subplot(V2_outer_gs[:])
+    V2_outer.tick_params(axis='both', which='both', bottom=0, left=0, labelbottom=0, labelleft=0)
+    V2_outer.set_facecolor("lightcyan")
+
+    velo_outer_gs = gridspec.GridSpec(1, 1)
+    velo_outer_gs.update(bottom=0,left=0, right=0.33333,top=0.75)
+    velo_outer = fig.add_subplot(velo_outer_gs[:])
+    velo_outer.tick_params(axis='both', which='both', bottom=0, left=0, labelbottom=0, labelleft=0)
+    velo_outer.set_facecolor("thistle")
+
+    for gs, axes, color in zip([gsV1, gsV2], [V1_axes, V2_axes], ["lightsalmon", "lightcyan"]):
+        row = 0
+        col = 0
+        for name in plot_names:
+            axis = fig.add_subplot(gs[row, col])
+            axis.tick_params(axis = "x", direction = "in", pad = -15, labelsize = 5, labelrotation = 0)
+            axis.tick_params(axis = "y", direction = "in", pad = -18, labelsize = 5, labelrotation = 0)
+            axis.set_title(name.replace("_", " "))
+            axes[name] = axis
+            print(row, col)
+            row = row if col != 4 else 1
+            col = col + 1 if col != 4 else 0
+            
+        
+    velo_ax = fig.add_subplot(gs0[1:4, 0])
+    velo_ax.set_title("Velocities")
+    velo_ax.tick_params(axis = "x", direction = "in", pad = -10)
+    velo_ax.tick_params(axis = "y", direction = "in", pad = -18)
+    velo_ax.set_ylabel("Free surface Velocity (km/s)")
+
+
+    #Set the VISAR labels
+    #fig.text(0.1, 0.1 "VISAR 1", size = "large")
+    #fig.subplots_adjust(left = 0.2)
+    #=====
+
+    #=====
+    #Plotting
+
+    #Plot beams & corrections for each shot
+    #for each VISAR:
+        #1. Go to shot folder & look @ info to get beam ref folder, slit size & sweep speed
+        #2. Go to beam folder and get fname for the beam from info.csv
+        #3. Create VISAR img from fname & plot on "beam" axis
+        #4. Correct VISAR img & plot on "corrected_beam" axis
+        #5. Get lineouts from beam folder & use this to set the time axis bounds
+
+    for visar, axes in zip(["VISAR1", "VISAR2"], [V1_axes, V2_axes]):
+        #1
+        shot_info = pd.read_csv(f"{folder}/{visar}/Shot/info.csv")
+        beam_ref_folder = shot_info["beam_ref"].item()
+
+        #2
+        beam_info = pd.read_csv(f"{beam_ref_folder}/info.csv")
+        beam_fname = beam_info["fpath"].item()
+        sweep_speed = beam_info["sweep_speed"].item()
+
+        #3
+        beam_img = VISARImage(beam_fname, sweep_speed = sweep_speed) #make beam img
+        beam_lineouts = pd.read_csv(f"{beam_ref_folder}/lineouts.csv") # get beamlineout
+        beam_time = beam_lineouts["time"]
+        beam_img.align_space()
+        beam_img.align_time()
+        beam_img.show_data(axes["beam"], minmax = (180, 270), ylabel = False)
+
+        correction = ImageCorrection(f"{beam_ref_folder}/correction.csv")
+        if visar == "VISAR3":
+            beam_img.apply_correction(correction)
+        beam_img.show_data(axes["corrected_beam"], minmax = (180, 270), ylabel = False)
+
+        #VISAR
+        shot_img = VISARImage(shot_info["fname"].item(), sweep_speed = sweep_speed)
+        shot_lineouts = pd.read_csv(f"{folder}/{visar}/Shot/time.csv")
+        if visar == "VISAR1":
+            v1_time = shot_lineouts.time
+        else:
+            v2_time = shot_lineouts.time
+        shot_img.show_data(axes["shot"], ylabel = False)
+        shot_ref_info = pd.read_csv(f"{folder}/{visar}/ShotRef/info.csv")
+        if visar == "VISAR1":
+            shot_img.apply_correction(correction)
+        shot_img.shear_data(shot_ref_info["shear"].values[0])
+        shot_img.align_time(shot_lineouts.time)
+        shot_img.show_data(axes["corrected_shot"], ylabel = False)
+        shot_lineouts = pd.read_csv(f"{folder}/{visar}/Shot/time.csv")
+
+        #plot the timing fiducials
+        ax = axes["timing"]
+        ax.plot(beam_lineouts.time, beam_lineouts.beam, label = "beam")
+        ax.plot(beam_lineouts.time, beam_lineouts.fiducial, label=  "beam fiducial")
+        ax.plot(shot_lineouts.time, shot_lineouts.fiducial, label = "shot fiducial")
+        ax.legend(fontsize = "x-small")
+
+        #plot lineout region
+        analysis_info = pd.read_csv(f"{folder}/{visar}/Shot/analysis_params.csv")
+        shot_img.show_data(axes["phase_region"], ylabel = False)
+        ax = axes["phase_region"]
+        ax.plot([analysis_info["x_bounds"][0], analysis_info["x_bounds"][0]], [analysis_info["y_bounds"][0], analysis_info["y_bounds"][1]], color = "k")
+        ax.plot([analysis_info["x_bounds"][1], analysis_info["x_bounds"][1]], [analysis_info["y_bounds"][0], analysis_info["y_bounds"][1]], color = "k")
+        ax.plot([analysis_info["x_bounds"][0], analysis_info["x_bounds"][1]], [analysis_info["y_bounds"][0], analysis_info["y_bounds"][0]], color = "k")
+        ax.plot([analysis_info["x_bounds"][0], analysis_info["x_bounds"][1]], [analysis_info["y_bounds"][1], analysis_info["y_bounds"][1]], color = "k")
+        ax.plot([analysis_info["ref_bounds"][0], analysis_info["ref_bounds"][0]], [analysis_info["y_bounds"][0], analysis_info["y_bounds"][1]], color = "lime")
+        ax.plot([analysis_info["ref_bounds"][1], analysis_info["ref_bounds"][1]], [analysis_info["y_bounds"][0], analysis_info["y_bounds"][1]], color = "lime")
+
+
+        #plot Fourier filter bounds, Fourier filtered data
+        ref_lineout = shot_img.take_vert_lineout(analysis_info["ref_bounds"][0], analysis_info["ref_bounds"][1], analysis_info["y_bounds"][0], analysis_info["y_bounds"][1])
+        fft_data = np.abs(fft(ref_lineout))
+        freq = fftfreq(len(ref_lineout))
+        ax = axes["fourier_bounds"]
+        ax.plot(freq[:len(ref_lineout)//2], fft_data[0:len(ref_lineout)//2])
+        ax.plot([analysis_info["fft_filter"][0], analysis_info["fft_filter"][0]], [fft_data.min(), fft_data.max()], color = "red")
+        ax.plot([analysis_info["fft_filter"][1], analysis_info["fft_filter"][1]], [fft_data.min(), fft_data.max()], color = "red")
+        ax.set_xlim(analysis_info["fft_filter"][0] - (analysis_info["fft_filter"][1] - analysis_info["fft_filter"][0])*0.1, analysis_info["fft_filter"][1] + (analysis_info["fft_filter"][1] - analysis_info["fft_filter"][0])*0.1)
+        filtered_fft = fft_data[np.multiply(freq > analysis_info["fft_filter"][0], freq < analysis_info["fft_filter"][1])]
+        ax.set_ylim(filtered_fft.min(), filtered_fft.max())
+
+        #plot filtered data
+        min_space = int((analysis_info["y_bounds"][0]- shot_img.space.min())/shot_img.space_per_pixel)
+        max_space = int((analysis_info["y_bounds"][1] - shot_img.space.min())/shot_img.space_per_pixel)
+        min_time = int((analysis_info["x_bounds"][0] - shot_img.time.min())/shot_img.time_resolution)
+        max_time = int((analysis_info["x_bounds"][1] - shot_img.time.min())/shot_img.time_resolution)
+        data_chunk = shot_img.data[min_space:max_space, min_time:max_time]
+        fft_ = fft(data_chunk, axis = 0)
+        #freq = np.abs(np.vstack([fftfreq(data_chunk.shape[1]) for i in range(data_chunk.shape[0])]))
+        freq = fftfreq(data_chunk.shape[0])
+        filter_mask = np.logical_and(freq > analysis_info["fft_filter"][0], freq < analysis_info["fft_filter"][1])
+        filtered_fft = fft_ * filter_mask[:, np.newaxis]
+        fourier_filtered_all = ifft(filtered_fft, n = data_chunk.shape[0], axis = 0).real
+        fourier_filtered = fourier_filtered_all.real
+        X, Y = np.meshgrid(np.linspace(analysis_info["x_bounds"][0], analysis_info["x_bounds"][1], fourier_filtered.shape[1] + 1), np.linspace(analysis_info["y_bounds"][0], analysis_info["y_bounds"][1], fourier_filtered.shape[0] + 1))
+        heat_min = 0.01 if fourier_filtered.min() <= 0 else fourier_filtered.min()
+        ax = axes["fourier_filtered"]
+        ax.pcolormesh(X, Y, fourier_filtered, cmap='magma')
+
+        #plot clean & unclean phase data
+        #before cleaning
+        phase = shot_img.get_phase_igor(
+            x_bounds = (analysis_info["x_bounds"][0], analysis_info["x_bounds"][1]),
+            y_bounds = (analysis_info["y_bounds"][0], analysis_info["y_bounds"][1]),
+            fband = (analysis_info["fft_filter"][0], analysis_info["fft_filter"][1]),
+            angle_deg = 0,
+            use_hann = True,
+            vpf = analysis_info["vpf"][0]
+        )
+        X, Y = np.meshgrid(np.linspace(analysis_info["x_bounds"][0], analysis_info["x_bounds"][1], fourier_filtered.shape[1] + 1), np.linspace(analysis_info["y_bounds"][0], analysis_info["y_bounds"][1], fourier_filtered.shape[0] + 1))
+        ax = axes["phase"]
+        phase_plot = ax.pcolormesh(X, Y, phase, cmap = "viridis")
+        fig.colorbar(phase_plot, ax = ax)
+
+        ax = axes["normalized_+_filtered"]
+        #apply phase transformations
+        if analysis_info["normalized"][0] == True:
+            ref_folder = shot_info["shot_ref"][0]
+            ref_info = pd.read_csv(f"{ref_folder}/info.csv")
+            ref_img = VISARImage(ref_info["fname"][0], sweep_speed = sweep_speed)
+            if visar == "VISAR1":
+                ref_img.apply_correction(correction)
+            ref_img.shear_data(shot_ref_info["shear"].values[0])
+            ref_lineouts = pd.read_csv(f"{ref_folder}/time.csv")
+            ref_img.align_time(ref_lineouts.time)
+            ref_phase = ref_img.get_phase_igor(
+                x_bounds = (analysis_info["x_bounds"][0], analysis_info["x_bounds"][1]),
+                y_bounds = (analysis_info["y_bounds"][0], analysis_info["y_bounds"][1]),
+                fband = (analysis_info["fft_filter"][0], analysis_info["fft_filter"][1]),
+                angle_deg = 0,
+                use_hann = True,
+                vpf = analysis_info["vpf"][0]
+            )
+            print("=====\n", ref_phase.shape, phase.shape)
+            print(len(shot_lineouts.time), len(ref_lineouts.time))
+            #fix dimension mismatch if it exists
+            if ref_phase.shape[1] != phase.shape[1]:
+                t0 = analysis_info["x_bounds"][0]
+                t1 = analysis_info["x_bounds"][1]
+                # resample reference onto the shot’s x grid (keeps physical alignment)
+                tx_shot = np.linspace(t0, t1, phase.shape[1])
+                tx_ref  = np.linspace(t0, t1, ref_phase.shape[1])
+                ref_phase = np.vstack([np.interp(tx_shot, tx_ref, row) for row in ref_phase])
+            phase = phase - ref_phase
+        
+        if analysis_info["gauss_applied"][0] == True:
+            phase = ndimage.gaussian_filter(phase, sigma = 2)
+
+        if analysis_info["median_applied"][0] == True:
+            phase = ndimage.median_filter(phase, size = (int(analysis_info["median_x"][0]), int(analysis_info["median_y"][0])))
+
+        phase_plot = ax.pcolormesh(X, Y, phase, cmap = "viridis")
+        fig.colorbar(phase_plot, ax = ax)
+        #ax.legend()
+
+
+    #plot the velocities against each other
+    time = np.linspace(analysis_info["x_bounds"][0], analysis_info["x_bounds"][1], phase.shape[1])
+    v1 = pd.read_csv(f"{folder}/VISAR1/Shot/velocity.csv")
+    v2 = pd.read_csv(f"{folder}/VISAR2/Shot/velocity.csv")
+    velo_ax.plot(v1.time, v1.velo, label = "VISAR 1", color = "red")
+    velo_ax.plot(v2.time, v2.velo, label = "VISAR 2", color = "blue")
+    velo_ax.legend()
+
+    #Save the report to the folder
+
+    #=====
+
+    #fix plot ticks
+    for axes in V1_axes, V2_axes:
+        for key in axes.keys():
+            axes[key].xaxis.set_major_locator(mticker.MaxNLocator(prune="both"))
+            axes[key].yaxis.set_major_locator(mticker.MaxNLocator(prune="both"))
+    velo_ax.xaxis.set_major_locator(mticker.MaxNLocator(prune="both"))
+    velo_ax.yaxis.set_major_locator(mticker.MaxNLocator(prune="both"))
+
+    plt.tight_layout()
+    """
+    plt.subplots_adjust(
+        left=0.05,   # space on the left
+        right=0.95,  # space on the right
+        top=0.95,    # space at the top
+        bottom=0.05, # space at the bottom
+        wspace=0.1,  # horizontal space between subplots
+        hspace=0.1   # vertical space between subplots
+        )
+    """   
+    plt.subplots_adjust(right = 0.96)
+    fig.text(0.97, 0.7, "VISAR 1", rotation = "vertical", size = 25, fontweight = "bold")
+    fig.text(0.97, 0.2, "VISAR 2", rotation = "vertical", size = 25, fontweight = "bold")
+    plt.show()
 
 class SingleShotAnalysis:
     """
@@ -486,7 +751,8 @@ class ShotAM:
         else:
             if self.V2_aligned == False:
                 self.align_V2()
-        analysis_plot = AnalysisPlot(f"{self.folder}/VISAR{VISAR_num}/Shot")
+        apply_beam_correction = False if VISAR_num == 2 else True #turn off the beam correction for VISAR 2
+        analysis_plot = AnalysisPlot(f"{self.folder}/VISAR{VISAR_num}/Shot", apply_beam_correction)
         analysis_plot.show_plot()
         if VISAR_num == 2:
             self.V2_analyzed = True

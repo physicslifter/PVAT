@@ -48,6 +48,7 @@ test_synthetic_shot_ref = 0 #generates a synthetic shot reference
 test_synthetic_phase_generation = 0 #passes in a velocity profile and plots the phase
 test_time_chop = 0 #tests chopping data by time
 test_shear = 0 #tests shearing on an image
+test_manual_beam_alignment = 1 #tests manual beam aligner interactive plot
 
 #Tests
 if any([test_ref, test_ref_split, test_image_correction, demo_img_correction, test_interactive_ref_plot, test_initialize_image_w_data]):
@@ -271,3 +272,6 @@ if test_shear == True:
     ax1.legend()
     plt.tight_layout()
     plt.show()
+
+if test_manual_beam_alignment == True:
+    pass
