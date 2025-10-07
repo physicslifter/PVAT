@@ -129,7 +129,7 @@ class VISARImage:
         if type(time) != type(None):
             self.time = time
         else:
-            self.time = np.linspace(0, self.sweep_speed, self.data.shape[1])
+            self.time = np.linspace(0, self.sweep_speed, self.data.shape[1]+1)
         #time resolution assuming 
         self.time_resolution = self.time[1] - self.time[0]
         self.time_aligned = True
@@ -139,7 +139,7 @@ class VISARImage:
             self.space = np.arange(self.data.shape[0])
             print(self.data.shape)
         else:
-            self.space = np.linspace(0, self.slit_size, self.data.shape[0])
+            self.space = np.linspace(0, self.slit_size, self.data.shape[0]+1)
         self.space_aligned = True
         self.space_per_pixel = self.space[1] - self.space[0]
 

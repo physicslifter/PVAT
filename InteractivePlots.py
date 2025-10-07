@@ -138,9 +138,9 @@ class ManualBeamAlignment:
         self.disp_img = self.img
         #self.disp_img.chop_by_space(beam_min, beam_max) #chop image to fit the beam bounds
         self.chop_spacing = (beam_max - beam_min)/num_chops
-        self.beam_locs = np.arange(0, num_chops)*self.chop_spacing + self.chop_spacing
+        self.beam_locs = self.beam_min + np.arange(0, num_chops)*self.chop_spacing + self.chop_spacing
         print(self.beam_locs)
-        self.beam_locs = np.array([int(i) for i in self.beam_locs])
+        #self.beam_locs = np.array([int(i) for i in self.beam_locs])
         print(self.beam_locs)
         self.locs = {}
         for loc in self.beam_locs:
@@ -235,7 +235,7 @@ class ManualBeamAlignment:
 
     def click_mark_center(self, val):
         #update the location for the center
-        location = int(self.chop_slider.val*self.chop_spacing + self.chop_spacing)
+        location = self.chop_slider.val*self.chop_spacing + self.chop_spacing + self.beam_min
         self.locs[location] = self.center_slider.val
         print(self.locs)
         #update the tracker
@@ -257,6 +257,7 @@ class ManualBeamAlignment:
             initial_val = vals[-1]
             vals = [initial_val - val for val in vals]
             print(self.beam_locs)
+            self.beam_locs = [i for i in self.beam_locs]
             correction.create(space = self.beam_locs[::-1], time_shift = vals[::-1])
             print(self.beam_locs[::-1], vals[::-1])
             correction.save(fname = f"{self.ref_image.folder}/correction.csv")
@@ -468,16 +469,21 @@ class BeamAligner:
         if os.path.exists(f"{self.ref.folder}/correction.csv"):
             self.has_correction = True
         #Save the correction
-        print(self.has_correction)
+        print(self.has_correction, self.manual_chop)
         if self.has_correction == True:
             if self.manual_chop == False:
                 self.ref.save_chop_as_correction() #saves most recent chop as the correction
         
                 #Apply the correction to the data
                 self.ref.img.apply_correction(self.ref.correction)
+                print("Auto chopped applied")
             else:
+                print("applying manual correction")
                 try:
                     correction = ImageCorrection(f"{self.ref.folder}/correction.csv")
+                    #saved_correction = pd.read_csv(f"{self.ref.folder}/correction.csv")
+                    #correction = ImageCorrection()
+                    #correction.create(space = saved_correction.space, time_shift = -saved_correction.time_shift)
                     self.ref.img.apply_correction(correction)
                     print("Manual correction found")
                 except:

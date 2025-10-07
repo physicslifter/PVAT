@@ -179,8 +179,7 @@ def write_shot_report(folder:str):
         beam_img.show_data(axes["beam"], minmax = (180, 270), ylabel = False)
 
         correction = ImageCorrection(f"{beam_ref_folder}/correction.csv")
-        if visar == "VISAR3":
-            beam_img.apply_correction(correction)
+        beam_img.apply_correction(correction)
         beam_img.show_data(axes["corrected_beam"], minmax = (180, 270), ylabel = False)
 
         #VISAR
@@ -192,10 +191,10 @@ def write_shot_report(folder:str):
             v2_time = shot_lineouts.time
         shot_img.show_data(axes["shot"], ylabel = False)
         shot_ref_info = pd.read_csv(f"{folder}/{visar}/ShotRef/info.csv")
-        if visar == "VISAR1":
-            shot_img.apply_correction(correction)
+        shot_img.apply_correction(correction)
         shot_img.shear_data(shot_ref_info["shear"].values[0])
         shot_img.align_time(shot_lineouts.time)
+        print(shot_img.data.shape, len(shot_lineouts.time))
         shot_img.show_data(axes["corrected_shot"], ylabel = False)
         shot_lineouts = pd.read_csv(f"{folder}/{visar}/Shot/time.csv")
 
@@ -269,8 +268,7 @@ def write_shot_report(folder:str):
             ref_folder = shot_info["shot_ref"][0]
             ref_info = pd.read_csv(f"{ref_folder}/info.csv")
             ref_img = VISARImage(ref_info["fname"][0], sweep_speed = sweep_speed)
-            if visar == "VISAR1":
-                ref_img.apply_correction(correction)
+            ref_img.apply_correction(correction)
             ref_img.shear_data(shot_ref_info["shear"].values[0])
             ref_lineouts = pd.read_csv(f"{ref_folder}/time.csv")
             ref_img.align_time(ref_lineouts.time)
